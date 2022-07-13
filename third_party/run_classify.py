@@ -42,6 +42,8 @@ from transformers import (
   XLMRobertaConfig,
   XLMRobertaTokenizer,
   XLMRobertaForSequenceClassification,
+  MEAEConfig,
+  MEAEForSequenceClassification,
   get_linear_schedule_with_warmup,
 )
 
@@ -67,6 +69,7 @@ MODEL_CLASSES = {
   "bert": (BertConfig, BertForSequenceClassification, BertTokenizer),
   "xlm": (XLMConfig, XLMForSequenceClassification, XLMTokenizer),
   "xlmr": (XLMRobertaConfig, XLMRobertaForSequenceClassification, XLMRobertaTokenizer),
+  "meae": (MEAEConfig, MEAEForSequenceClassification, XLMRobertaTokenizer),
 }
 
 PROCESSORS = {
