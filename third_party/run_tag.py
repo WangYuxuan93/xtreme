@@ -48,7 +48,9 @@ from transformers import (
   XLMTokenizer,
   XLMRobertaConfig,
   XLMRobertaTokenizer,
-  XLMRobertaForTokenClassification
+  XLMRobertaForTokenClassification,
+  MEAEConfig,
+  MEAEForTokenClassification,
 )
 from xlm import XLMForTokenClassification
 
@@ -65,6 +67,7 @@ MODEL_CLASSES = {
   "bert": (BertConfig, BertForTokenClassification, BertTokenizer),
   "xlm": (XLMConfig, XLMForTokenClassification, XLMTokenizer),
   "xlmr": (XLMRobertaConfig, XLMRobertaForTokenClassification, XLMRobertaTokenizer),
+  "meae": (MEAEConfig, MEAEForTokenClassification, XLMRobertaTokenizer),
 }
 
 

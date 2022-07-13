@@ -49,7 +49,9 @@ from transformers import (
   XLNetForQuestionAnswering,
   XLNetTokenizer,
   get_linear_schedule_with_warmup,
-  XLMRobertaTokenizer
+  XLMRobertaTokenizer,
+  MEAEConfig,
+  MEAEForQuestionAnswering,
 )
 
 from transformers.data.metrics.squad_metrics import (
@@ -86,7 +88,8 @@ MODEL_CLASSES = {
   "xlm": (XLMConfig, XLMForQuestionAnswering, XLMTokenizer),
   "distilbert": (DistilBertConfig, DistilBertForQuestionAnswering, DistilBertTokenizer),
   "albert": (AlbertConfig, AlbertForQuestionAnswering, AlbertTokenizer),
-  "xlm-roberta": (XLMRobertaConfig, XLMRobertaForQuestionAnswering, XLMRobertaTokenizer)
+  "xlm-roberta": (XLMRobertaConfig, XLMRobertaForQuestionAnswering, XLMRobertaTokenizer),
+  "meae": (MEAEConfig, MEAEForQuestionAnswering, XLMRobertaTokenizer)
 }
 
 
