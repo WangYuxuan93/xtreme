@@ -57,11 +57,12 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-ALL_MODELS = sum(
-  (tuple(conf.pretrained_config_archive_map.keys()) 
-    for conf in (BertConfig, XLMConfig, XLMRobertaConfig)),
-  ()
-)
+#ALL_MODELS = sum(
+#  (tuple(conf.pretrained_config_archive_map.keys()) 
+#    for conf in (BertConfig, XLMConfig, XLMRobertaConfig)),
+#  ()
+#)
+ALL_MODELS = [""]
 
 MODEL_CLASSES = {
   "bert": (BertConfig, BertForSequenceClassification, BertTokenizer),
@@ -165,7 +166,7 @@ def train(args, train_dataset, model, tokenizer, lang2id=None):
   epochs_trained = 0
   steps_trained_in_current_epoch = 0
   # Check if continuing training from a checkpoint
-  if os.path.exists(args.model_name_or_path):
+  if os.path.exists(args.model_name_or_path) and False:
     # set global_step to gobal_step of last saved checkpoint from model path
     global_step = int(args.model_name_or_path.split("-")[-1].split("/")[0])
     epochs_trained = global_step // (len(train_dataloader) // args.gradient_accumulation_steps)
