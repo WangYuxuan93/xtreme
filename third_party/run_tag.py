@@ -266,6 +266,8 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
   nb_eval_steps = 0
   preds = None
   out_label_ids = None
+  entity_positions = None
+  mention_bounds = None
   model.eval()
   for batch in tqdm(eval_dataloader, desc="Evaluating"):
     batch = tuple(t.to(args.device) for t in batch)
@@ -279,6 +281,8 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
         inputs["token_type_ids"] = batch[2] if args.model_type in ["bert", "xlnet"] else None
       if args.model_type == 'xlm':
         inputs["langs"] = batch[4]
+      if args.output_entity_info:
+        inputs["output_entity_info"] = True
       outputs = model(**inputs)
       tmp_eval_loss, logits = outputs[:2]
 
@@ -294,6 +298,18 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
     else:
       preds = np.append(preds, logits.detach().cpu().numpy(), axis=0)
       out_label_ids = np.append(out_label_ids, inputs["labels"].detach().cpu().numpy(), axis=0)
+    
+    if args.output_entity_info:
+      bio_logits, score, positions = outputs[-3:]
+      if entity_positions is None:
+        entity_positions = [positions.detach().cpu().numpy()]
+        mention_bounds = bio_logits.detach().cpu().numpy()
+      else:
+        entity_positions = entity_positions.append(positions.detach().cpu().numpy())
+        mention_bounds = np.append(mention_bounds, bio_logits.detach().cpu().numpy(), axis=0)
+  
+  if args.output_entity_info:
+    mention_preds = np.argmax(mention_bounds, axis=2)
 
   if nb_eval_steps == 0:
     results = {k: 0 for k in ["loss", "precision", "recall", "f1"]}
@@ -483,6 +499,9 @@ def main():
             help="The languages in the training sets.")
   parser.add_argument("--log_file", type=str, default=None, help="log file")
   parser.add_argument("--eval_patience", type=int, default=-1, help="wait N times of decreasing dev score before early stop during training")
+  
+  parser.add_argument("--output_entity_info", action="store_true",
+            help="Output entity info for debug.")
   args = parser.parse_args()
 
   if os.path.exists(args.output_dir) and os.listdir(
