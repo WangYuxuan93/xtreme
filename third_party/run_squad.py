@@ -216,7 +216,7 @@ def train(args, train_dataset, model, tokenizer):
       inputs = {
         "input_ids": batch[0],
         "attention_mask": batch[1],
-        "token_type_ids": None if args.model_type in ["xlm", "xlm-roberta", "distilbert"] else batch[2],
+        "token_type_ids": batch[2] if args.model_type in ["bert", "xlnet", "albert"] else None,
         "start_positions": batch[3],
         "end_positions": batch[4],
       }
@@ -328,7 +328,7 @@ def evaluate(args, model, tokenizer, prefix="", language='en', lang2id=None):
       inputs = {
         "input_ids": batch[0],
         "attention_mask": batch[1],
-        "token_type_ids": None if args.model_type in ["xlm", "distilbert", "xlm-roberta"] else batch[2],
+        "token_type_ids": batch[2] if args.model_type in ["bert", "xlnet", "albert"] else None,
       }
       example_indices = batch[3]
 
