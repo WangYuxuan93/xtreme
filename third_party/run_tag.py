@@ -303,12 +303,12 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
     
     if args.output_entity_info:
       bio_logits, score, positions = outputs[-3:]
-      if entity_positions is None:
+      if mention_bounds is None:
         entity_positions = [positions.detach().cpu().numpy()]
         mention_bounds = bio_logits.detach().cpu().numpy()
         all_input_ids = inputs["input_ids"].detach().cpu().numpy()
       else:
-        entity_positions = entity_positions.append(positions.detach().cpu().numpy())
+        entity_positions.append(positions.detach().cpu().numpy())
         mention_bounds = np.append(mention_bounds, bio_logits.detach().cpu().numpy(), axis=0)
         all_input_ids = np.append(all_input_ids, inputs["input_ids"].detach().cpu().numpy(), axis=0)
   
@@ -350,10 +350,16 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
 
 def write_entity_info(args, tokenizer, all_input_ids, out_label_ids, label_map, preds, mention_preds, lang):
   output_dir = os.path.join(args.output_dir, "{}_entity_info.txt".format(lang))
+  print (len(out_label_ids))
+  print (len(mention_preds))
+  num_gold_ner = 0
+  num_bio_corr = 0
+  num_bio_pred = 0
   assert len(out_label_ids) == len(mention_preds)
   #infile = os.path.join(args.data_dir, lang, "test.{}".format(list(filter(None, args.model_name_or_path.split("/"))).pop()))
   #idxfile = infile + '.idx'
-  bound_map = {0: "O", 1: "B", 2: "I"}
+  bound_map = {0: "O", 1: "B", 2: "I", -100: "<PAD>"}
+  label_map[-100] = "<PAD>"
   with open(output_dir, "w") as f:
     for i, label_ids in enumerate(out_label_ids):
       pred_labels = preds[i]
@@ -363,8 +369,17 @@ def write_entity_info(args, tokenizer, all_input_ids, out_label_ids, label_map, 
       for j, tok in enumerate(input_toks):
         if tok == "<pad>": break
         items = [tok, label_map[label_ids[j]], label_map[pred_labels[j]], bound_map[mention_labels[j]]]
+        if label_ids[j] >= 0:
+          if mention_labels[j] == 1:
+            num_bio_pred += 1
+          gold_l = label_map[label_ids[j]]
+          if gold_l.startswith("B"):
+            num_gold_ner += 1
+            if mention_labels[j] == 1:
+              num_bio_corr += 1
         f.write("\t".join(items)+"\n")
       f.write("\n")
+  print ("Gold NER: {}, Bio Total Pred: {}, Bio Pred Corr:{}".format(num_gold_ner, num_bio_pred, num_bio_corr))
 
 
 def load_and_cache_examples(args, tokenizer, labels, pad_token_label_id, mode, lang, lang2id=None, few_shot=-1):
