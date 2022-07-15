@@ -19,6 +19,7 @@
 from __future__ import absolute_import, division, print_function
 
 import argparse
+import enum
 import glob
 import logging
 import os
@@ -268,6 +269,7 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
   out_label_ids = None
   entity_positions = None
   mention_bounds = None
+  all_input_ids = None
   model.eval()
   for batch in tqdm(eval_dataloader, desc="Evaluating"):
     batch = tuple(t.to(args.device) for t in batch)
@@ -304,9 +306,11 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
       if entity_positions is None:
         entity_positions = [positions.detach().cpu().numpy()]
         mention_bounds = bio_logits.detach().cpu().numpy()
+        all_input_ids = inputs["input_ids"].detach().cpu().numpy()
       else:
         entity_positions = entity_positions.append(positions.detach().cpu().numpy())
         mention_bounds = np.append(mention_bounds, bio_logits.detach().cpu().numpy(), axis=0)
+        all_input_ids = np.append(all_input_ids, inputs["input_ids"].detach().cpu().numpy(), axis=0)
   
   if args.output_entity_info:
     mention_preds = np.argmax(mention_bounds, axis=2)
@@ -334,13 +338,33 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
       "recall": recall_score(out_label_list, preds_list),
       "f1": f1_score(out_label_list, preds_list)
     }
-
+  if args.output_entity_info:
+    write_entity_info(args, tokenizer, all_input_ids, out_label_ids, label_map, preds, mention_preds, lang)
   if print_result:
     logger.info("***** Evaluation result %s in %s *****" % (prefix, lang))
     for key in sorted(results.keys()):
       logger.info("  %s = %s", key, str(results[key]))
 
   return results, preds_list
+
+
+def write_entity_info(args, tokenizer, all_input_ids, out_label_ids, label_map, preds, mention_preds, lang):
+  output_dir = os.path.join(args.output_dir, "{}_entity_info.txt".format(lang))
+  assert len(out_label_ids) == len(mention_preds)
+  #infile = os.path.join(args.data_dir, lang, "test.{}".format(list(filter(None, args.model_name_or_path.split("/"))).pop()))
+  #idxfile = infile + '.idx'
+  bound_map = {0: "O", 1: "B", 2: "I"}
+  with open(output_dir, "w") as f:
+    for i, label_ids in enumerate(out_label_ids):
+      pred_labels = preds[i]
+      mention_labels = mention_preds[i]
+      input_ids = all_input_ids[i]
+      input_toks = tokenizer.convert_ids_to_tokens(input_ids)
+      for j, tok in enumerate(input_toks):
+        if tok == "<pad>": break
+        items = [tok, label_map[label_ids[j]], label_map[pred_labels[j]], bound_map[mention_labels[j]]]
+        f.write("\t".join(items)+"\n")
+      f.write("\n")
 
 
 def load_and_cache_examples(args, tokenizer, labels, pad_token_label_id, mode, lang, lang2id=None, few_shot=-1):
@@ -666,7 +690,7 @@ def main():
         output_test_predictions_file = os.path.join(args.output_dir, "test_{}_predictions.txt".format(lang))
         infile = os.path.join(args.data_dir, lang, "test.{}".format(list(filter(None, args.model_name_or_path.split("/"))).pop()))
         idxfile = infile + '.idx'
-        save_predictions(args, predictions, output_test_predictions_file, infile, idxfile)
+        save_predictions(args, predictions, output_test_predictions_file, infile, idxfile, output_word_prediction=True)
 
   # Predict dev set
   if args.do_predict_dev and args.local_rank in [-1, 0]:
