@@ -82,13 +82,13 @@ def set_seed(args):
 # B-LOC, B-ORG, B-PER, I-LOC, I-ORG, I-PER, O
 panx2bio = {0:1, 1:1, 2:1, 3:2, 4:2, 5:2, 6:0, -100:-100}
 def create_bio_targets(label_ids):
-  print ("label_ids:\n", label_ids)
+  #print ("label_ids:\n", label_ids)
   bio_targets = label_ids.clone()
   batch_size, seq_len = label_ids.size()
-  for i in batch_size:
-    for j in seq_len:
-      bio_targets[i,j] = panx2bio[label_ids[i,j]]
-  print ("bio_targets:\n", bio_targets)
+  for i in range(batch_size):
+    for j in range(seq_len):
+      bio_targets[i,j] = panx2bio[int(label_ids[i,j])]
+  #print ("bio_targets:\n", bio_targets)
   return bio_targets
 
 def train(args, train_dataset, model, tokenizer, labels, pad_token_label_id, lang2id=None):
