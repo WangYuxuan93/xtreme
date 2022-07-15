@@ -79,6 +79,17 @@ def set_seed(args):
   if args.n_gpu > 0:
     torch.cuda.manual_seed_all(args.seed)
 
+# B-LOC, B-ORG, B-PER, I-LOC, I-ORG, I-PER, O
+panx2bio = {0:1, 1:1, 2:1, 3:2, 4:2, 5:2, 6:0, -100:-100}
+def create_bio_targets(label_ids):
+  print ("label_ids:\n", label_ids)
+  bio_targets = label_ids.clone()
+  batch_size, seq_len = label_ids.size()
+  for i in batch_size:
+    for j in seq_len:
+      bio_targets[i,j] = panx2bio[label_ids[i,j]]
+  print ("bio_targets:\n", bio_targets)
+  return bio_targets
 
 def train(args, train_dataset, model, tokenizer, labels, pad_token_label_id, lang2id=None):
   """Train the model."""
@@ -156,6 +167,9 @@ def train(args, train_dataset, model, tokenizer, labels, pad_token_label_id, lan
 
       if args.model_type == "xlm":
         inputs["langs"] = batch[4]
+      
+      if args.fine_tune_with_bio:
+        inputs["mention_boundaries"] = create_bio_targets(batch[3])
 
       outputs = model(**inputs)
       loss = outputs[0]
@@ -541,6 +555,8 @@ def main():
   
   parser.add_argument("--output_entity_info", action="store_true",
             help="Output entity info for debug.")
+  parser.add_argument("--fine_tune_with_bio", action="store_true",
+            help="Fine-tuning target task along with Bio classification.")
   args = parser.parse_args()
 
   if os.path.exists(args.output_dir) and os.listdir(
