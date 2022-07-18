@@ -322,7 +322,8 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
         mention_bounds = bio_logits.detach().cpu().numpy()
         all_input_ids = inputs["input_ids"].detach().cpu().numpy()
       else:
-        entity_positions.append(positions.detach().cpu().numpy())
+        if positions is not None:
+          entity_positions.append(positions.detach().cpu().numpy())
         mention_bounds = np.append(mention_bounds, bio_logits.detach().cpu().numpy(), axis=0)
         all_input_ids = np.append(all_input_ids, inputs["input_ids"].detach().cpu().numpy(), axis=0)
   
