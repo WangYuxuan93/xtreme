@@ -281,7 +281,7 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
   nb_eval_steps = 0
   preds = None
   out_label_ids = None
-  entity_positions = None
+  entity_positions = []
   mention_bounds = None
   all_input_ids = None
   model.eval()
@@ -317,13 +317,29 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
     
     if args.output_entity_info:
       bio_logits, score, positions = outputs[-3:]
+      positions = positions.detach().cpu().numpy()
       if mention_bounds is None:
-        entity_positions = [positions.detach().cpu().numpy()]
+        offset = 0
+        for i in range(bio_logits.size(0)):
+          entity_positions.append([])
+          while offset < positions.shape[1] and positions[0, offset] <= i:
+            if positions[0, offset] == i:
+              entity_positions[-1].append((positions[1,offset],positions[2,offset]))
+              offset += 1  
         mention_bounds = bio_logits.detach().cpu().numpy()
         all_input_ids = inputs["input_ids"].detach().cpu().numpy()
       else:
         if positions is not None:
-          entity_positions.append(positions.detach().cpu().numpy())
+          offset = 0
+          for i in range(bio_logits.size(0)):
+            entity_positions.append([])
+            while offset < positions.shape[1] and positions[0, offset] <= i:
+              if positions[0, offset] == i:
+                entity_positions[-1].append((positions[1,offset],positions[2,offset]))
+                offset += 1
+        else:
+          for i in range(bio_logits.size(0)):
+            entity_positions.append([])
         mention_bounds = np.append(mention_bounds, bio_logits.detach().cpu().numpy(), axis=0)
         all_input_ids = np.append(all_input_ids, inputs["input_ids"].detach().cpu().numpy(), axis=0)
   
@@ -354,7 +370,7 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
       "f1": f1_score(out_label_list, preds_list)
     }
   if args.output_entity_info:
-    write_entity_info(args, tokenizer, all_input_ids, out_label_ids, label_map, preds, mention_preds, lang)
+    write_entity_info(args, tokenizer, all_input_ids, out_label_ids, label_map, preds, mention_preds, lang, entity_positions)
   if print_result:
     logger.info("***** Evaluation result %s in %s *****" % (prefix, lang))
     for key in sorted(results.keys()):
@@ -363,7 +379,7 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
   return results, preds_list
 
 
-def write_entity_info(args, tokenizer, all_input_ids, out_label_ids, label_map, preds, mention_preds, lang):
+def write_entity_info(args, tokenizer, all_input_ids, out_label_ids, label_map, preds, mention_preds, lang, entity_positions):
   output_dir = os.path.join(args.output_dir, "{}_entity_info.txt".format(lang))
   print (len(out_label_ids))
   print (len(mention_preds))
@@ -381,6 +397,12 @@ def write_entity_info(args, tokenizer, all_input_ids, out_label_ids, label_map, 
       mention_labels = mention_preds[i]
       input_ids = all_input_ids[i]
       input_toks = tokenizer.convert_ids_to_tokens(input_ids)
+      ent_pos = entity_positions[i]
+      ent_info = "Entities: "
+      for ent_s, ent_e in ent_pos:
+        ent = " ".join(input_toks[ent_s:ent_e+1])
+        ent_info += "{}-{}:{}, ".format(ent_s,ent_e,ent)
+      f.write(ent_info+"\n")
       for j, tok in enumerate(input_toks):
         if tok == "<pad>": break
         items = [tok, label_map[label_ids[j]], label_map[pred_labels[j]], bound_map[mention_labels[j]]]
