@@ -559,6 +559,9 @@ def main():
             help="Fine-tuning target task along with Bio classification.")
   args = parser.parse_args()
 
+  if args.model_type != "meae":
+    args.output_entity_info = False
+
   if os.path.exists(args.output_dir) and os.listdir(
       args.output_dir) and args.do_train and not args.overwrite_output_dir:
     raise ValueError(
