@@ -53,7 +53,8 @@ class InputRelxFeatures(object):
             token_type_ids,
             ent1_id, 
             ent2_id, 
-            label=None
+            label=None,
+            langs=None,
         ):
         self.input_ids = input_ids
         self.attention_mask = attention_mask
@@ -61,6 +62,7 @@ class InputRelxFeatures(object):
         self.ent1_id = ent1_id
         self.ent2_id = ent2_id
         self.label = label
+        self.langs = langs
 
 
 class RelxProcessor(DataProcessor):
@@ -81,11 +83,26 @@ class RelxProcessor(DataProcessor):
         self.label_map = {l:i for i, l in enumerate(self.labels)}
         return self.labels
 
+    def filter(self, text):
+        new_text = []
+        for word in text.split():
+            if word.startswith('http'):
+                continue
+            elif word.startswith('www'):
+                continue
+            elif word.startswith('**********'):
+                continue
+            elif word.startswith('-------'):
+                continue
+            new_text.append(word)
+        text = ' '.join(new_text)
+        return text
+
     def get_examples(self, data_dir, language="en", split="train"):
 
         examples = []
         for lg in language.split(','):
-            filename = os.path.join(data_dir, "{}-{}.tsv".format(split, lg))
+            filename = os.path.join(data_dir, "{}-{}.txt".format(split, lg))
             with open(filename) as f:
                 raw_lines = f.read().splitlines()
         
@@ -93,6 +110,7 @@ class RelxProcessor(DataProcessor):
                 guid = "%s-%s-%s" % (split, language, i)
                 text = raw_lines[4*i].split('\t')[1][1:-1]
                 text = text.replace('<e1>', '<e1> ').replace('</e1>', ' </e1>').replace('<e2>', '<e2> ').replace('</e2>', ' </e2>')
+                text = self.filter(text)
                 label = raw_lines[4*i+1].strip()
                 examples.append(InputReExample(guid=guid, text=text, label=label, language=language))
 
@@ -124,8 +142,9 @@ def convert_examples_to_features(
     label_map = {label: i for i, label in enumerate(label_list)}
 
     # The special token id for markers before two entities
-    ent1_tok_id = tokenizer._convert_token_to_id('<e1>')
-    ent2_tok_id = tokenizer._convert_token_to_id('<e2>')
+    ent1_tok_id = tokenizer.convert_tokens_to_ids('<e1>')
+    ent2_tok_id = tokenizer.convert_tokens_to_ids('<e2>')
+    print ("ent1_id:{}, ent2_id:{}".format(ent1_tok_id, ent2_tok_id))
 
     features = []
 

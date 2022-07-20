@@ -392,7 +392,7 @@ def load_and_cache_examples(args, task, tokenizer, split='train', language='en',
   if args.local_rank not in [-1, 0] and not evaluate:
     torch.distributed.barrier()
 
-  processor = RelxProcessor()
+  processor = RelxProcessor(args.task_name)
   output_mode = "classification"
   # Load data features from cache or dataset file
   lc = '_lc' if args.do_lower_case else ''
@@ -659,7 +659,7 @@ def main():
   set_seed(args)
 
   # Prepare dataset
-  processor = RelxProcessor()
+  processor = RelxProcessor(args.task_name)
   args.output_mode = "classification"
   train_filename = os.path.join(args.data_dir, "train-en.txt")
   label_list = processor.get_labels(train_filename)
