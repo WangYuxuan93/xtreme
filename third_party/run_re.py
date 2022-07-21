@@ -470,7 +470,7 @@ def main():
     default=None,
     type=str,
     required=True,
-    help="The input data dir. Should contain the .tsv files (or other data files) for the task.",
+    help="The input data dir. Should contain the .txt files (or other data files) for the task.",
   )
   parser.add_argument(
     "--model_type",
@@ -788,7 +788,8 @@ def main():
 
   # Prediction
   if args.do_predict and args.local_rank in [-1, 0]:
-    tokenizer = tokenizer_class.from_pretrained(args.model_name_or_path if args.model_name_or_path else best_checkpoint, do_lower_case=args.do_lower_case)
+    tokenizer = tokenizer_class.from_pretrained(args.output_dir, do_lower_case=args.do_lower_case)
+    #tokenizer = tokenizer_class.from_pretrained(args.model_name_or_path if args.model_name_or_path else best_checkpoint, do_lower_case=args.do_lower_case)
     model = model_class.from_pretrained(best_checkpoint)
     model.to(args.device)
     output_predict_file = os.path.join(args.output_dir, args.test_split + '_results.txt')
@@ -796,8 +797,8 @@ def main():
     with open(output_predict_file, 'a') as writer:
       writer.write('======= Predict using the model from {} for {}:\n'.format(best_checkpoint, args.test_split))
       for language in args.predict_languages.split(','):
-        output_file = os.path.join(args.output_dir, 'test-{}.tsv'.format(language))
-        result = evaluate(args, model, tokenizer, split=args.test_split, language=language, lang2id=lang2id, prefix='best_checkpoint', output_file=output_file, label_list=label_list)
+        output_file = os.path.join(args.output_dir, 'test-{}.txt'.format(language))
+        result = evaluate(args, model, tokenizer, split=args.test_split, language=language, lang2id=lang2id, prefix='best_checkpoint', output_file=output_file, label_list=label_list, output_only_prediction=False)
         writer.write('{}={}\n'.format(language, result['acc']))
         logger.info('{}={}'.format(language, result['acc']))
         total += result['num']
@@ -813,7 +814,7 @@ def main():
     with open(output_predict_file, 'w') as writer:
       writer.write('======= Predict using the model from {}:\n'.format(args.init_checkpoint))
       for language in args.predict_languages.split(','):
-        output_file = os.path.join(args.output_dir, 'dev-{}.tsv'.format(language))
+        output_file = os.path.join(args.output_dir, 'dev-{}.txt'.format(language))
         result = evaluate(args, model, tokenizer, split='dev', language=language, lang2id=lang2id, prefix='best_checkpoint', output_file=output_file, label_list=label_list)
         writer.write('{}={}\n'.format(language, result['acc']))
         total += result['num']
