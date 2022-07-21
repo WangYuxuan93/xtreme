@@ -186,7 +186,8 @@ def train(args, train_dataset, model, tokenizer, lang2id=None):
 
       model.train()
       batch = tuple(t.to(args.device) for t in batch)
-      inputs = {"input_ids": batch[0], "attention_mask": batch[1], "labels": batch[3]}
+      inputs = {"input_ids": batch[0], "attention_mask": batch[1], "labels": batch[3],
+                "ent1_ids": batch[4], "ent2_ids": batch[5]}
       if args.model_type != "distilbert":
         inputs["token_type_ids"] = (
           batch[2] if args.model_type in ["bert"] else None
@@ -333,7 +334,8 @@ def evaluate(args, model, tokenizer, split='train', language='en', lang2id=None,
       batch = tuple(t.to(args.device) for t in batch)
 
       with torch.no_grad():
-        inputs = {"input_ids": batch[0], "attention_mask": batch[1], "labels": batch[3]}
+        inputs = {"input_ids": batch[0], "attention_mask": batch[1], "labels": batch[3],
+                  "ent1_ids": batch[4], "ent2_ids": batch[5]}
         if args.model_type != "distilbert":
           inputs["token_type_ids"] = (
             batch[2] if args.model_type in ["bert"] else None
