@@ -416,8 +416,13 @@ def write_entity_info(args, tokenizer, all_input_ids, out_label_ids, label_map, 
               num_bio_corr += 1
         f.write("\t".join(items)+"\n")
       f.write("\n")
-  print ("Gold NER: {}, Bio Total Pred: {}, Bio Pred Corr:{}".format(num_gold_ner, num_bio_pred, num_bio_corr))
-
+  
+    print ("Gold NER: {}, Bio Total Pred: {}, Bio Pred Corr:{}".format(num_gold_ner, num_bio_pred, num_bio_corr))
+    p = float(num_gold_ner) / num_bio_pred
+    r = float(num_gold_ner) / num_gold_ner
+    print ("Precision: {}, Recall: {}".format(p, r))
+    f.write("\n########BIO Head Prediction########\nGold NER: {}, Bio Total Pred: {}, Bio Pred Corr:{}\n".format(num_gold_ner, num_bio_pred, num_bio_corr))
+    f.write("Precision: {}, Recall: {}".format(p, r))
 
 def load_and_cache_examples(args, tokenizer, labels, pad_token_label_id, mode, lang, lang2id=None, few_shot=-1):
   # Make sure only the first process in distributed training process
