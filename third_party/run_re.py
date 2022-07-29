@@ -245,8 +245,12 @@ def train(args, train_dataset, model, tokenizer, lang2id=None):
                 total_correct += result['correct']
               writer.write('total={}\n'.format(total_correct / total))
 
-          if args.save_only_best_checkpoint:          
+          if args.save_only_best_checkpoint:
+            output_dev_file = os.path.join(args.output_dir, 'eval_dev_results')
             result = evaluate(args, model, tokenizer, split='dev', language=args.train_language, lang2id=lang2id, prefix=str(global_step))
+            with open(output_dev_file, 'a') as writer:
+              writer.write('\n======= Evaluate using the model from checkpoint-{}:\n'.format(global_step))
+              writer.write('{}={}\n'.format(args.train_language, result['acc']))
             logger.info(" Dev accuracy {} = {}".format(args.train_language, result['acc']))
             if result['acc'] > best_score:
               logger.info(" result['acc']={} > best_score={}".format(result['acc'], best_score))
@@ -292,6 +296,12 @@ def train(args, train_dataset, model, tokenizer, lang2id=None):
     if args.max_steps > 0 and global_step > args.max_steps:
       train_iterator.close()
       break
+
+  if args.save_only_best_checkpoint:
+    output_dev_file = os.path.join(args.output_dir, 'eval_dev_results')
+    with open(output_dev_file, 'a') as writer:
+      writer.write("Global_step = {}, average loss = {}".format(global_step, tr_loss / global_step))
+      writer.write("Best checkpoint = {}, best score = {}".format(best_checkpoint, best_score))
 
   if args.local_rank in [-1, 0]:
     tb_writer.close()

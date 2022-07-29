@@ -211,7 +211,11 @@ def train(args, train_dataset, model, tokenizer, labels, pad_token_label_id, lan
 
         if args.local_rank in [-1, 0] and args.save_steps > 0 and global_step % args.save_steps == 0:
           if args.save_only_best_checkpoint:
+            output_dev_file = os.path.join(args.output_dir, 'eval_dev_results')
             result, _ = evaluate(args, model, tokenizer, labels, pad_token_label_id, mode="dev", prefix=global_step, lang=args.train_langs, lang2id=lang2id)
+            with open(output_dev_file, 'a') as writer:
+              writer.write('\n======= Evaluate using the model from checkpoint-{}:\n'.format(global_step))
+              writer.write('{}={}\n'.format(args.train_langs, result['f1']))
             if result["f1"] > best_score:
               logger.info("result['f1']={} > best_score={}".format(result["f1"], best_score))
               best_score = result["f1"]
@@ -254,6 +258,12 @@ def train(args, train_dataset, model, tokenizer, labels, pad_token_label_id, lan
     if args.max_steps > 0 and global_step > args.max_steps:
       train_iterator.close()
       break
+
+  if args.save_only_best_checkpoint:
+    output_dev_file = os.path.join(args.output_dir, 'eval_dev_results')
+    with open(output_dev_file, 'a') as writer:
+      writer.write("Global_step = {}, average loss = {}".format(global_step, tr_loss / global_step))
+      writer.write("Best checkpoint = {}, best score = {}".format(best_checkpoint, best_score))
 
   if args.local_rank in [-1, 0]:
     tb_writer.close()

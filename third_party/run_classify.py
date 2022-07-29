@@ -311,10 +311,9 @@ def train(args, train_dataset, model, tokenizer, lang2id=None):
   if args.save_only_best_checkpoint:
     output_dev_file = os.path.join(args.output_dir, 'eval_dev_results')
     with open(output_dev_file, 'a') as writer:
-      writer.write("Global_step = {}, average loss = {}".format(global_step, tr_loss))
+      writer.write("Global_step = {}, average loss = {}".format(global_step, tr_loss / global_step))
       writer.write("Best checkpoint = {}, best score = {}".format(best_checkpoint, best_score))
       
-
   if args.local_rank in [-1, 0]:
     tb_writer.close()
 
