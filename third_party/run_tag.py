@@ -401,7 +401,7 @@ def write_entity_info(args, tokenizer, all_input_ids, out_label_ids, label_map, 
       ent_info = "Entities: "
       for ent_s, ent_e in ent_pos:
         ent = " ".join(input_toks[ent_s:ent_e+1])
-        ent_info += "{}-{}:{}, ".format(ent_s,ent_e,ent)
+        ent_info += "{}-{}:{} | ".format(ent_s,ent_e,ent)
       f.write(ent_info+"\n")
       for j, tok in enumerate(input_toks):
         if tok == "<pad>": break
@@ -418,8 +418,8 @@ def write_entity_info(args, tokenizer, all_input_ids, out_label_ids, label_map, 
       f.write("\n")
   
     print ("Gold NER: {}, Bio Total Pred: {}, Bio Pred Corr:{}".format(num_gold_ner, num_bio_pred, num_bio_corr))
-    p = float(num_gold_ner) / num_bio_pred
-    r = float(num_gold_ner) / num_gold_ner
+    p = float(num_bio_corr) / num_bio_pred
+    r = float(num_bio_corr) / num_gold_ner
     print ("Precision: {}, Recall: {}".format(p, r))
     f.write("\n########BIO Head Prediction########\nGold NER: {}, Bio Total Pred: {}, Bio Pred Corr:{}\n".format(num_gold_ner, num_bio_pred, num_bio_corr))
     f.write("Precision: {}, Recall: {}".format(p, r))
