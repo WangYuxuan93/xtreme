@@ -436,7 +436,7 @@ def load_and_cache_examples(args, tokenizer, evaluate=False, output_examples=Fal
     input_dir,
     "cached_{}_{}_{}_{}".format(
       os.path.basename(args.predict_file) if evaluate else os.path.basename(args.train_file),
-      list(filter(None, args.model_name_or_path.split("/"))).pop(),
+      args.model_type if evaluate else list(filter(None, args.model_name_or_path.split("/"))).pop(),
       str(args.max_seq_length),
       str(language)
     ),
