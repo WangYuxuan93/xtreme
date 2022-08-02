@@ -210,6 +210,18 @@ def train(args, train_dataset, model, tokenizer, labels, pad_token_label_id, lan
           logging_loss = tr_loss
 
         if args.local_rank in [-1, 0] and args.save_steps > 0 and global_step % args.save_steps == 0:
+          if args.eval_test_set:
+            output_predict_file = os.path.join(args.output_dir, 'eval_test_results')
+            total = num = 0.0
+            with open(output_predict_file, 'a') as writer:
+              writer.write('\n======= Predict using the model from checkpoint-{}:\n'.format(global_step))
+              for lang in args.predict_langs.split(','):
+                result, _ = evaluate(args, model, tokenizer, labels, pad_token_label_id, mode="test", lang=lang, lang2id=lang2id)
+                writer.write('{}={}\n'.format(lang, result['f1']))
+                total += result['f1']
+                num += 1
+              writer.write('avg={}\n'.format(total / num))
+
           if args.save_only_best_checkpoint:
             output_dev_file = os.path.join(args.output_dir, 'eval_dev_results')
             result, _ = evaluate(args, model, tokenizer, labels, pad_token_label_id, mode="dev", prefix=global_step, lang=args.train_langs, lang2id=lang2id)
@@ -590,6 +602,11 @@ def main():
             help="Output entity info for debug.")
   parser.add_argument("--fine_tune_with_bio", action="store_true",
             help="Fine-tuning target task along with Bio classification.")
+  parser.add_argument(
+    "--eval_test_set",
+    action="store_true",
+    help="Whether to evaluate test set durinng training",
+  )
   args = parser.parse_args()
 
   if args.model_type != "meae":
