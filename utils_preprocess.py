@@ -42,16 +42,20 @@ def panx_tokenize_preprocess(args):
     special_tokens_count = 3 if isinstance(tokenizer, XLMRobertaTokenizer) else 2
     max_seq_len = max_len - special_tokens_count
     subword_len_counter = idx = 0
+    after_blank = False
     with open(infile, "rt") as fin, open(outfile, "w") as fout, open(idxfile, "w") as fidx:
       for line in fin:
         line = line.strip()
-        if not line:
+        # do not add continuous blank line
+        if not line and not after_blank:
           fout.write('\n')
           fidx.write('\n')
           idx += 1
           subword_len_counter = 0
+          after_blank = True
           continue
-
+        
+        after_blank = False
         items = line.split()
         token = items[0].strip()
         if len(items) == 2:
