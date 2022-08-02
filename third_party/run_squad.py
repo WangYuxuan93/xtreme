@@ -258,9 +258,16 @@ def train(args, train_dataset, model, tokenizer):
         if args.local_rank in [-1, 0] and args.logging_steps > 0 and global_step % args.logging_steps == 0:
           # Only evaluate when single GPU otherwise metrics may not average well
           if args.local_rank == -1 and args.evaluate_during_training:
+            output_dev_file = os.path.join(args.output_dir, 'eval_dev_results')
+
             results = evaluate(args, model, tokenizer)
             for key, value in results.items():
               tb_writer.add_scalar("eval_{}".format(key), value, global_step)
+            
+            with open(output_dev_file, 'a') as writer:
+              writer.write('\n======= Evaluate using the model from checkpoint-{}:\n'.format(global_step))
+              writer.write('{}={}\n'.format(args.eval_lang, results['f1']))
+
           tb_writer.add_scalar("lr", scheduler.get_lr()[0], global_step)
           tb_writer.add_scalar("loss", (tr_loss - logging_loss) / args.logging_steps, global_step)
           logging_loss = tr_loss
@@ -678,6 +685,7 @@ def main():
 
   parser.add_argument("--train_lang", type=str, default="en", help="The language of the training data")
   parser.add_argument("--eval_lang", type=str, default="en", help="The language of the test data")
+  parser.add_argument("--log_file", type=str, default=None, help="log file")
 
   args = parser.parse_args()
 
@@ -715,10 +723,13 @@ def main():
 
   # Setup logging
   logging.basicConfig(
-    format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
-    datefmt="%m/%d/%Y %H:%M:%S",
-    level=logging.INFO if args.local_rank in [-1, 0] else logging.WARN,
+    handlers = [logging.FileHandler(args.log_file), logging.StreamHandler()],
+    format = '%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
+    datefmt = '%m/%d/%Y %H:%M:%S',
+    level = logging.INFO if args.local_rank in [-1, 0] else logging.WARN
   )
+
+
   logger.warning(
     "Process rank: %s, device: %s, n_gpu: %s, distributed training: %s, 16-bits training: %s",
     args.local_rank,
