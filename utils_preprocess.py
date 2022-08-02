@@ -47,7 +47,8 @@ def panx_tokenize_preprocess(args):
       for line in fin:
         line = line.strip()
         # do not add continuous blank line
-        if not line and not after_blank:
+        if not line:
+          if after_blank: continue
           fout.write('\n')
           fidx.write('\n')
           idx += 1
