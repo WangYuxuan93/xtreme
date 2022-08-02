@@ -327,29 +327,24 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
     
     if args.output_entity_info:
       bio_logits, score, positions = outputs[-3:]
-      positions = positions.detach().cpu().numpy()
-      if mention_bounds is None:
+
+      if positions is not None:
+        positions = positions.detach().cpu().numpy()
         offset = 0
         for i in range(bio_logits.size(0)):
           entity_positions.append([])
           while offset < positions.shape[1] and positions[0, offset] <= i:
             if positions[0, offset] == i:
               entity_positions[-1].append((positions[1,offset],positions[2,offset]))
-              offset += 1  
+              offset += 1
+      else:
+        for i in range(bio_logits.size(0)):
+            entity_positions.append([])
+      
+      if mention_bounds is None:
         mention_bounds = bio_logits.detach().cpu().numpy()
         all_input_ids = inputs["input_ids"].detach().cpu().numpy()
       else:
-        if positions is not None:
-          offset = 0
-          for i in range(bio_logits.size(0)):
-            entity_positions.append([])
-            while offset < positions.shape[1] and positions[0, offset] <= i:
-              if positions[0, offset] == i:
-                entity_positions[-1].append((positions[1,offset],positions[2,offset]))
-                offset += 1
-        else:
-          for i in range(bio_logits.size(0)):
-            entity_positions.append([])
         mention_bounds = np.append(mention_bounds, bio_logits.detach().cpu().numpy(), axis=0)
         all_input_ids = np.append(all_input_ids, inputs["input_ids"].detach().cpu().numpy(), axis=0)
   
