@@ -490,8 +490,9 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
 
 
 def eval_squad(dataset_file, predictions):
-  dataset_json = json.load(dataset_file)
-  dataset = dataset_json['data']
+  with open(dataset_file) as dataset_file:
+    dataset_json = json.load(dataset_file)
+    dataset = dataset_json['data']
   return squad_eval_metric(dataset, predictions)
 
 
@@ -984,7 +985,7 @@ def main():
       for language in args.eval_langs.split(','):
         result = evaluate(args, model, tokenizer, split='test', prefix="", language=language)
         writer.write('{}={}\n'.format(language, result['f1']))
-        logger.info('{}={}'.format(language, result['f1']))
+        logger.info('{}: f1={}'.format(language, result['f1']))
         total += result['f1']
         num += 1
       writer.write('Avg={}\n'.format(total / num))
