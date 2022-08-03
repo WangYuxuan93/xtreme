@@ -280,24 +280,25 @@ def train(args, train_dataset, model, tokenizer):
         if args.local_rank in [-1, 0] and args.save_steps > 0 and global_step % args.save_steps == 0:
           if args.eval_test_set:
             output_predict_file = os.path.join(args.output_dir, 'eval_test_results')
-            total = num = 0.0
+            total_f1 = total_em = num = 0.0
             with open(output_predict_file, 'a') as writer:
               writer.write('\n======= Predict using the model from checkpoint-{}:\n'.format(global_step))
               for language in args.eval_langs.split(','):
                 result = evaluate(args, model, tokenizer, split='test', prefix="", language=language)
-                writer.write('{}={}\n'.format(language, result['f1']))
-                logger.info('{}={}'.format(language, result['f1']))
-                total += result['f1']
+                writer.write('{}: f1={}, em={}\n'.format(language, result['f1'], result['exact_match']))
+                logger.info('{}: f1={}, em={}'.format(language, result['f1'], result['exact_match']))
+                total_f1 += result['f1']
+                total_em += result['exact_match']
                 num += 1
-              writer.write('Avg={}\n'.format(total / num))
+              writer.write('Avg f1={}, em={}\n'.format(total_f1 / num, total_em / num))
 
           if args.save_only_best_checkpoint:
             output_dev_file = os.path.join(args.output_dir, 'eval_dev_results')
             result = evaluate(args, model, tokenizer)
             with open(output_dev_file, 'a') as writer:
               writer.write('\n======= Evaluate using the model from checkpoint-{}:\n'.format(global_step))
-              writer.write('{}={}\n'.format(args.train_lang, result['f1']))
-            logger.info(" Dev F1 {} = {}".format(args.train_lang, result['f1']))
+              writer.write('{}: f1={}, em={}\n'.format(args.train_lang, result['f1'], result['exact_match']))
+            logger.info(" Dev {} f1 = {}, em = {}".format(args.train_lang, result['f1'], result['exact_match']))
             if result['f1'] > best_score:
               logger.info(" result['f1']={} > best_score={}".format(result['f1'], best_score))
               output_dir = os.path.join(args.output_dir, "checkpoint-best")
@@ -983,11 +984,12 @@ def main():
       writer.write('======= Predict using the model from {} for test:\n'.format(best_checkpoint))
       for language in args.eval_langs.split(','):
         result = evaluate(args, model, tokenizer, split='test', prefix="", language=language)
-        writer.write('{}={}\n'.format(language, result['f1']))
-        logger.info('{}={}'.format(language, result['f1']))
-        total += result['f1']
+        writer.write('{}: f1={}, em={}\n'.format(language, result['f1'], result['exact_match']))
+        logger.info('{}: f1={}, em={}'.format(language, result['f1'], result['exact_match']))
+        total_f1 += result['f1']
+        total_em += result['exact_match']
         num += 1
-      writer.write('Avg={}\n'.format(total / num))
+      writer.write('Avg f1={}, em={}\n'.format(total_f1 / num, total_em / num))
 
   return results
 
