@@ -491,8 +491,9 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
 
 
 def eval_squad(dataset_file, predictions):
-  dataset_json = json.load(dataset_file)
-  dataset = dataset_json['data']
+  with open(dataset_file) as dataset_file:
+    dataset_json = json.load(dataset_file)
+    dataset = dataset_json['data']
   return squad_eval_metric(dataset, predictions)
 
 
