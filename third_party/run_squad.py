@@ -193,6 +193,8 @@ def train(args, train_dataset, model, tokenizer):
     except ValueError:
       logger.info("  Starting fine-tuning.")
 
+  best_score = 0
+  best_checkpoint = None
   tr_loss, logging_loss = 0.0, 0.0
   model.zero_grad()
   train_iterator = trange(
@@ -258,15 +260,15 @@ def train(args, train_dataset, model, tokenizer):
         if args.local_rank in [-1, 0] and args.logging_steps > 0 and global_step % args.logging_steps == 0:
           # Only evaluate when single GPU otherwise metrics may not average well
           if args.local_rank == -1 and args.evaluate_during_training:
-            output_dev_file = os.path.join(args.output_dir, 'eval_dev_results')
+            #output_dev_file = os.path.join(args.output_dir, 'eval_dev_results')
 
             results = evaluate(args, model, tokenizer)
             for key, value in results.items():
               tb_writer.add_scalar("eval_{}".format(key), value, global_step)
             
-            with open(output_dev_file, 'a') as writer:
-              writer.write('\n======= Evaluate using the model from checkpoint-{}:\n'.format(global_step))
-              writer.write('{}={}\n'.format(args.eval_lang, results['f1']))
+            #with open(output_dev_file, 'a') as writer:
+            #  writer.write('\n======= Evaluate using the model from checkpoint-{}:\n'.format(global_step))
+            #  writer.write('{}={}\n'.format(args.eval_langs, results['f1']))
 
           tb_writer.add_scalar("lr", scheduler.get_lr()[0], global_step)
           tb_writer.add_scalar("loss", (tr_loss - logging_loss) / args.logging_steps, global_step)
@@ -274,20 +276,61 @@ def train(args, train_dataset, model, tokenizer):
 
         # Save model checkpoint
         if args.local_rank in [-1, 0] and args.save_steps > 0 and global_step % args.save_steps == 0:
-          output_dir = os.path.join(args.output_dir, "checkpoint-{}".format(global_step))
-          if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
-          # Take care of distributed/parallel training
-          model_to_save = model.module if hasattr(model, "module") else model
-          model_to_save.save_pretrained(output_dir)
-          tokenizer.save_pretrained(output_dir)
+          if args.eval_test_set:
+            output_predict_file = os.path.join(args.output_dir, 'eval_test_results')
+            total = num = 0.0
+            with open(output_predict_file, 'a') as writer:
+              writer.write('\n======= Predict using the model from checkpoint-{}:\n'.format(global_step))
+              for language in args.eval_langs.split(','):
+                result = evaluate(args, model, tokenizer, split='test', prefix="", language=language, lang2id=lang2id)
+                writer.write('{}={}\n'.format(language, result['f1']))
+                logger.info('{}={}'.format(language, result['f1']))
+                total += result['f1']
+                num += 1
+              writer.write('Avg={}\n'.format(total / num))
 
-          torch.save(args, os.path.join(output_dir, "training_args.bin"))
-          logger.info("Saving model checkpoint to %s", output_dir)
+          if args.save_only_best_checkpoint:
+            output_dev_file = os.path.join(args.output_dir, 'eval_dev_results')
+            result = evaluate(args, model, tokenizer)
+            with open(output_dev_file, 'a') as writer:
+              writer.write('\n======= Evaluate using the model from checkpoint-{}:\n'.format(global_step))
+              writer.write('{}={}\n'.format(args.train_lang, result['f1']))
+            logger.info(" Dev F1 {} = {}".format(args.train_lang, result['f1']))
+            if result['f1'] > best_score:
+              logger.info(" result['f1']={} > best_score={}".format(result['f1'], best_score))
+              output_dir = os.path.join(args.output_dir, "checkpoint-best")
+              best_checkpoint = output_dir
+              best_score = result['f1']
+              # Save model checkpoint
+              if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+              model_to_save = (
+                model.module if hasattr(model, "module") else model
+              )  # Take care of distributed/parallel training
+              model_to_save.save_pretrained(output_dir)
+              tokenizer.save_pretrained(output_dir)
 
-          torch.save(optimizer.state_dict(), os.path.join(output_dir, "optimizer.pt"))
-          torch.save(scheduler.state_dict(), os.path.join(output_dir, "scheduler.pt"))
-          logger.info("Saving optimizer and scheduler states to %s", output_dir)
+              torch.save(args, os.path.join(output_dir, "training_args.bin"))
+              logger.info("Saving model checkpoint to %s", output_dir)
+
+              torch.save(optimizer.state_dict(), os.path.join(output_dir, "optimizer.pt"))
+              torch.save(scheduler.state_dict(), os.path.join(output_dir, "scheduler.pt"))
+              logger.info("Saving optimizer and scheduler states to %s", output_dir)
+          else:
+            output_dir = os.path.join(args.output_dir, "checkpoint-{}".format(global_step))
+            if not os.path.exists(output_dir):
+              os.makedirs(output_dir)
+            # Take care of distributed/parallel training
+            model_to_save = model.module if hasattr(model, "module") else model
+            model_to_save.save_pretrained(output_dir)
+            tokenizer.save_pretrained(output_dir)
+
+            torch.save(args, os.path.join(output_dir, "training_args.bin"))
+            logger.info("Saving model checkpoint to %s", output_dir)
+
+            torch.save(optimizer.state_dict(), os.path.join(output_dir, "optimizer.pt"))
+            torch.save(scheduler.state_dict(), os.path.join(output_dir, "scheduler.pt"))
+            logger.info("Saving optimizer and scheduler states to %s", output_dir)
 
       if args.max_steps > 0 and global_step > args.max_steps:
         epoch_iterator.close()
@@ -295,15 +338,21 @@ def train(args, train_dataset, model, tokenizer):
     if args.max_steps > 0 and global_step > args.max_steps:
       train_iterator.close()
       break
-
+  
+  if args.save_only_best_checkpoint:
+    output_dev_file = os.path.join(args.output_dir, 'eval_dev_results')
+    with open(output_dev_file, 'a') as writer:
+      writer.write("Global_step = {}, average loss = {}\n".format(global_step, tr_loss / global_step))
+      writer.write("Best checkpoint = {}, best score = {}".format(best_checkpoint, best_score))
+  
   if args.local_rank in [-1, 0]:
     tb_writer.close()
 
   return global_step, tr_loss / global_step
 
 
-def evaluate(args, model, tokenizer, prefix="", language='en', lang2id=None):
-  dataset, examples, features = load_and_cache_examples(args, tokenizer, evaluate=True, output_examples=True,
+def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang2id=None):
+  dataset, examples, features = load_and_cache_examples(args, tokenizer, split, output_examples=True,
                               language=language, lang2id=lang2id)
 
   if not os.path.exists(args.output_dir) and args.local_rank in [-1, 0]:
@@ -381,11 +430,12 @@ def evaluate(args, model, tokenizer, prefix="", language='en', lang2id=None):
   logger.info("  Evaluation done in total %f secs (%f sec per example)", evalTime, evalTime / len(dataset))
 
   # Compute predictions
-  output_prediction_file = os.path.join(args.output_dir, "predictions_{}_{}.json".format(language, prefix))
-  output_nbest_file = os.path.join(args.output_dir, "nbest_predictions_{}_{}.json".format(language, prefix))
+  pred_dir = os.path.join(args.output_dir, "predictions/{}".format(args.target_task_name))
+  output_prediction_file = os.path.join(pred_dir, "predictions_{}_{}.json".format(language, prefix))
+  output_nbest_file = os.path.join(pred_dir, "nbest_predictions_{}_{}.json".format(language, prefix))
 
   if args.version_2_with_negative:
-    output_null_log_odds_file = os.path.join(args.output_dir, "null_odds_{}.json".format(prefix))
+    output_null_log_odds_file = os.path.join(pred_dir, "null_odds_{}.json".format(prefix))
   else:
     output_null_log_odds_file = None
 
@@ -424,6 +474,7 @@ def evaluate(args, model, tokenizer, prefix="", language='en', lang2id=None):
       args.version_2_with_negative,
       args.null_score_diff_threshold,
       tokenizer,
+      is_zh=True if language == 'zh' else False,
     )
 
   # Compute the F1 and exact scores.
@@ -431,18 +482,29 @@ def evaluate(args, model, tokenizer, prefix="", language='en', lang2id=None):
   return results
 
 
-def load_and_cache_examples(args, tokenizer, evaluate=False, output_examples=False,
+def load_and_cache_examples(args, tokenizer, split='train', output_examples=False,
               language='en', lang2id=None):
+  evaluate = False if split == 'train' else True
   if args.local_rank not in [-1, 0] and not evaluate:
     # Make sure only the first process in distributed training process the dataset, and the others will use the cache
     torch.distributed.barrier()
 
+  if split == 'train':
+    filename = os.path.basename(args.train_file)
+  elif split == 'dev':
+    filename = os.path.basename(args.valid_file)
+  elif split == 'test':
+    filename = os.path.basename(args.predict_file)
+    filename = filename.replace("<lc>", language)
+  else:
+    logger.info("Unsupported split: {}.".format(split))
+  
   # Load data features from cache or dataset file
   input_dir = args.data_dir if args.data_dir else "."
   cached_features_file = os.path.join(
     input_dir,
     "cached_{}_{}_{}_{}".format(
-      os.path.basename(args.predict_file) if evaluate else os.path.basename(args.train_file),
+      filename,
       args.model_type if evaluate else list(filter(None, args.model_name_or_path.split("/"))).pop(),
       str(args.max_seq_length),
       str(language)
@@ -457,7 +519,7 @@ def load_and_cache_examples(args, tokenizer, evaluate=False, output_examples=Fal
   else:
     logger.info("Creating features from dataset file at %s", input_dir)
 
-    if not args.data_dir and ((evaluate and not args.predict_file) or (not evaluate and not args.train_file)):
+    if not args.data_dir and ((split=='dev' and not args.valid_file) or (split=='test' and not args.predict_file) or (split=='train' and not args.train_file)):
       try:
         import tensorflow_datasets as tfds
       except ImportError:
@@ -470,8 +532,11 @@ def load_and_cache_examples(args, tokenizer, evaluate=False, output_examples=Fal
       examples = SquadV1Processor().get_examples_from_dataset(tfds_examples, evaluate=evaluate, language=language)
     else:
       processor = SquadV2Processor() if args.version_2_with_negative else SquadV1Processor()
-      if evaluate:
-        examples = processor.get_dev_examples(args.data_dir, filename=args.predict_file, language=language)
+      if split == 'test':
+        pred_file = args.predict_file.replace("<lc>", language)
+        examples = processor.get_dev_examples(args.data_dir, filename=pred_file, language=language)
+      elif split == 'dev':
+        examples = processor.get_dev_examples(args.data_dir, filename=args.valid_file, language=language)
       else:
         examples = processor.get_train_examples(args.data_dir, filename=args.train_file, language=language)
 
@@ -542,10 +607,17 @@ def main():
     + "If no data dir or train/predict files are specified, will run with tensorflow_datasets.",
   )
   parser.add_argument(
-    "--predict_file",
+    "--valid_file",
     default=None,
     type=str,
     help="The input evaluation file. If a data dir is specified, will look for the file there"
+    + "If no data dir or train/predict files are specified, will run with tensorflow_datasets.",
+  )
+  parser.add_argument(
+    "--predict_file",
+    default=None,
+    type=str,
+    help="The input test file. If a data dir is specified, will look for the file there"
     + "If no data dir or train/predict files are specified, will run with tensorflow_datasets.",
   )
   parser.add_argument(
@@ -598,6 +670,7 @@ def main():
   )
   parser.add_argument("--do_train", action="store_true", help="Whether to run training.")
   parser.add_argument("--do_eval", action="store_true", help="Whether to run eval on the dev set.")
+  parser.add_argument("--do_predict", action="store_true", help="Whether to run prediction on the test set.")
   parser.add_argument(
     "--evaluate_during_training", action="store_true", help="Run evaluation during training at each logging step."
   )
@@ -684,8 +757,16 @@ def main():
   parser.add_argument("--threads", type=int, default=1, help="multiple threads for converting example to features")
 
   parser.add_argument("--train_lang", type=str, default="en", help="The language of the training data")
-  parser.add_argument("--eval_lang", type=str, default="en", help="The language of the test data")
+  parser.add_argument("--eval_langs", type=str, default="en", help="The language of the test data")
   parser.add_argument("--log_file", type=str, default=None, help="log file")
+
+  parser.add_argument(
+    "--eval_test_set", action="store_true", help="Whether to evaluate test set durinng training",
+  )
+  parser.add_argument(
+    "--save_only_best_checkpoint", action="store_true", help="save only the best checkpoint"
+  )
+  parser.add_argument("--target_task_name", type=str, default="mlqa", help="The target task name")
 
   args = parser.parse_args()
 
@@ -792,7 +873,7 @@ def main():
 
   # Training
   if args.do_train:
-    train_dataset = load_and_cache_examples(args, tokenizer, evaluate=False, output_examples=False, language=args.train_lang, lang2id=lang2id)
+    train_dataset = load_and_cache_examples(args, tokenizer, split='train', output_examples=False, language=args.train_lang, lang2id=lang2id)
     global_step, tr_loss = train(args, train_dataset, model, tokenizer)
     logger.info(" global_step = %s, average loss = %s", global_step, tr_loss)
 
@@ -818,9 +899,50 @@ def main():
     tokenizer = tokenizer_class.from_pretrained(args.output_dir, do_lower_case=args.do_lower_case)
     model.to(args.device)
 
-  # Evaluation - we can ask to evaluate all the checkpoints (sub-directories) in a directory
   results = {}
+  if os.path.exists(os.path.join(args.output_dir, 'checkpoint-best')):
+    best_checkpoint = os.path.join(args.output_dir, 'checkpoint-best')
+  else:
+    best_checkpoint = args.output_dir
+  best_score = 0
+  # Evaluation - we can ask to evaluate all the checkpoints (sub-directories) in a directory
   if args.do_eval and args.local_rank in [-1, 0]:
+    logger.info("Loading checkpoints saved during training for evaluation")
+    checkpoints = [args.output_dir]
+    if args.eval_all_checkpoints:
+      checkpoints = list(
+        os.path.dirname(c)
+        for c in sorted(glob.glob(args.output_dir + "/**/" + WEIGHTS_NAME, recursive=True))
+      )
+      logging.getLogger("transformers.modeling_utils").setLevel(logging.WARN)  # Reduce model loading logs
+    logger.info("Evaluate the following checkpoints: %s", checkpoints)
+
+    for checkpoint in checkpoints:
+      # Reload the model
+      global_step = checkpoint.split("-")[-1] if len(checkpoints) > 1 else ""
+      model = model_class.from_pretrained(checkpoint, force_download=True)
+      model.to(args.device)
+
+      # Evaluate
+      result = evaluate(args, model, tokenizer, split='dev', prefix=global_step, language=args.train_lang, lang2id=lang2id)
+      if result['f1'] > best_score:
+        best_checkpoint = checkpoint
+        best_score = result['f1']
+      result = dict((k + ("_{}".format(global_step) if global_step else ""), v) for k, v in result.items())
+      results.update(result)
+
+    output_eval_file = os.path.join(args.output_dir, 'eval_results')
+    with open(output_eval_file, 'w') as writer:
+      for key, value in results.items():
+        writer.write('{} = {}\n'.format(key, value))
+      writer.write("Best checkpoint is {}, best accuracy is {}".format(best_checkpoint, best_score))
+      logger.info("Best checkpoint is {}, best accuracy is {}".format(best_checkpoint, best_score))
+    #logger.info("Results: {}".format(results))
+  
+  # Prediction
+  if args.do_predict and args.local_rank in [-1, 0]:
+    results = {}
+    """
     if args.do_train:
       logger.info("Loading checkpoints saved during training for evaluation")
       checkpoints = [args.output_dir]
@@ -833,22 +955,22 @@ def main():
     else:
       logger.info("Loading checkpoint %s for evaluation", args.model_name_or_path)
       checkpoints = [args.model_name_or_path]
-
     logger.info("Evaluate the following checkpoints: %s", checkpoints)
-
-    for checkpoint in checkpoints:
-      # Reload the model
-      global_step = checkpoint.split("-")[-1] if len(checkpoints) > 1 else ""
-      model = model_class.from_pretrained(checkpoint, force_download=True)
-      model.to(args.device)
-
-      # Evaluate
-      result = evaluate(args, model, tokenizer, prefix=global_step, language=args.eval_lang, lang2id=lang2id)
-
-      result = dict((k + ("_{}".format(global_step) if global_step else ""), v) for k, v in result.items())
-      results.update(result)
-
-  logger.info("Results: {}".format(results))
+    """
+    # Reload the model
+    model = model_class.from_pretrained(best_checkpoint, force_download=True)
+    model.to(args.device)
+    output_predict_file = os.path.join(args.output_dir, 'test_results.txt')
+    total = num = 0.0
+    with open(output_predict_file, 'a') as writer:
+      writer.write('======= Predict using the model from {} for test:\n'.format(best_checkpoint))
+      for language in args.eval_langs.split(','):
+        result = evaluate(args, model, tokenizer, split='test', prefix="", language=language, lang2id=lang2id)
+        writer.write('{}={}\n'.format(language, result['f1']))
+        logger.info('{}={}'.format(language, result['f1']))
+        total += result['f1']
+        num += 1
+      writer.write('Avg={}\n'.format(total / num))
 
   return results
 
