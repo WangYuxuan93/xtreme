@@ -23,12 +23,14 @@ import logging
 import os
 import random
 import timeit
+import json
 
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm, trange
+from evaluate_squad import evaluate as squad_eval_metric
 
 from transformers import (
   WEIGHTS_NAME,
@@ -478,8 +480,17 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
     )
 
   # Compute the F1 and exact scores.
-  results = squad_evaluate(examples, predictions)
+  #results = squad_evaluate(examples, predictions)
+  dataset_file = args.valid_file if split=='dev' else args.predict_file.replace("<lc>", language)
+  results = eval_squad(dataset_file, predictions)
+
   return results
+
+
+def eval_squad(dataset_file, predictions):
+  dataset_json = json.load(dataset_file)
+  dataset = dataset_json['data']
+  return squad_eval_metric(dataset, predictions)
 
 
 def load_and_cache_examples(args, tokenizer, split='train', output_examples=False,
