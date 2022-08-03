@@ -284,7 +284,7 @@ def train(args, train_dataset, model, tokenizer):
             with open(output_predict_file, 'a') as writer:
               writer.write('\n======= Predict using the model from checkpoint-{}:\n'.format(global_step))
               for language in args.eval_langs.split(','):
-                result = evaluate(args, model, tokenizer, split='test', prefix="", language=language, lang2id=lang2id)
+                result = evaluate(args, model, tokenizer, split='test', prefix="", language=language)
                 writer.write('{}={}\n'.format(language, result['f1']))
                 logger.info('{}={}'.format(language, result['f1']))
                 total += result['f1']
@@ -433,6 +433,8 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
 
   # Compute predictions
   pred_dir = os.path.join(args.output_dir, "predictions/{}".format(args.target_task_name))
+  if not os.path.exists(pred_dir):
+    os.makedirs(pred_dir)
   output_prediction_file = os.path.join(pred_dir, "predictions_{}_{}.json".format(language, prefix))
   output_nbest_file = os.path.join(pred_dir, "nbest_predictions_{}_{}.json".format(language, prefix))
 
@@ -511,7 +513,11 @@ def load_and_cache_examples(args, tokenizer, split='train', output_examples=Fals
     logger.info("Unsupported split: {}.".format(split))
   
   # Load data features from cache or dataset file
-  input_dir = args.data_dir if args.data_dir else "."
+  if split == 'test':
+    input_dir = os.path.dirname(args.predict_file)
+  else:
+    input_dir = args.data_dir if args.data_dir else "."
+  
   cached_features_file = os.path.join(
     input_dir,
     "cached_{}_{}_{}_{}".format(
@@ -935,7 +941,7 @@ def main():
       model.to(args.device)
 
       # Evaluate
-      result = evaluate(args, model, tokenizer, split='dev', prefix=global_step, language=args.train_lang, lang2id=lang2id)
+      result = evaluate(args, model, tokenizer, split='dev', prefix=global_step, language=args.train_lang)
       if result['f1'] > best_score:
         best_checkpoint = checkpoint
         best_score = result['f1']
@@ -976,7 +982,7 @@ def main():
     with open(output_predict_file, 'a') as writer:
       writer.write('======= Predict using the model from {} for test:\n'.format(best_checkpoint))
       for language in args.eval_langs.split(','):
-        result = evaluate(args, model, tokenizer, split='test', prefix="", language=language, lang2id=lang2id)
+        result = evaluate(args, model, tokenizer, split='test', prefix="", language=language)
         writer.write('{}={}\n'.format(language, result['f1']))
         logger.info('{}={}'.format(language, result['f1']))
         total += result['f1']
