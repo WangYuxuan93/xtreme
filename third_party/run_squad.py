@@ -378,6 +378,9 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
 
   all_results = []
   start_time = timeit.default_timer()
+  entity_positions = []
+  mention_bounds = None
+  all_input_ids = None
 
   for batch in tqdm(eval_dataloader, desc="Evaluating"):
     model.eval()
@@ -390,6 +393,8 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
         "token_type_ids": batch[2] if args.model_type in ["bert", "xlnet", "albert"] else None,
       }
       example_indices = batch[3]
+      if args.output_entity_info:
+        inputs["output_entity_info"] = True
 
       # XLNet and XLM use more arguments for their predictions
       if args.model_type in ["xlnet", "xlm"]:
@@ -399,6 +404,29 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
 
       outputs = model(**inputs)
 
+    if args.output_entity_info:
+      bio_logits, score, positions = outputs[-3:]
+
+      if positions is not None:
+        positions = positions.detach().cpu().numpy()
+        offset = 0
+        for i in range(bio_logits.size(0)):
+          entity_positions.append([])
+          while offset < positions.shape[1] and positions[0, offset] <= i:
+            if positions[0, offset] == i:
+              entity_positions[-1].append((positions[1,offset],positions[2,offset]))
+              offset += 1
+      else:
+        for i in range(bio_logits.size(0)):
+            entity_positions.append([])
+      
+      if mention_bounds is None:
+        mention_bounds = bio_logits.detach().cpu().numpy()
+        all_input_ids = inputs["input_ids"].detach().cpu().numpy()
+      else:
+        mention_bounds = np.append(mention_bounds, bio_logits.detach().cpu().numpy(), axis=0)
+        all_input_ids = np.append(all_input_ids, inputs["input_ids"].detach().cpu().numpy(), axis=0)
+  
     for i, example_index in enumerate(example_indices):
       eval_feature = features[example_index.item()]
       unique_id = int(eval_feature.unique_id)
@@ -429,6 +457,9 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
 
       all_results.append(result)
 
+  if args.output_entity_info:
+    mention_preds = np.argmax(mention_bounds, axis=2)
+  
   evalTime = timeit.default_timer() - start_time
   logger.info("  Evaluation done in total %f secs (%f sec per example)", evalTime, evalTime / len(dataset))
 
@@ -446,6 +477,9 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
     output_null_log_odds_file = os.path.join(pred_dir, "null_odds_{}.json".format(prefix))
   else:
     output_null_log_odds_file = None
+  
+  if args.output_entity_info:
+    write_entity_info(args, tokenizer, all_input_ids, mention_preds, language, entity_positions, pred_dir)
 
   # XLNet and XLM use a more complex post-processing procedure
   if args.model_type in ["xlnet", "xlm"]:
@@ -501,6 +535,42 @@ def eval_squad(dataset_file, predictions, language):
   #with open(prediction_file) as prediction_file:
   #  predictions = json.load(prediction_file)
   return squad_eval_metric(dataset, predictions, language)
+
+
+def write_entity_info(args, tokenizer, all_input_ids, mention_preds, lang, entity_positions, pred_dir):
+  output_dir = os.path.join(pred_dir, "{}_entity_info.txt".format(lang))
+  num_gold_ner = 0
+  num_bio_corr = 0
+  num_bio_pred = 0
+  num_mention_pred = 0
+  bound_map = {0: "O", 1: "B", 2: "I", -100: "<PAD>"}
+  with open(output_dir, "w") as f:
+    for i, input_ids in enumerate(all_input_ids):
+      mention_labels = mention_preds[i]
+      input_toks = tokenizer.convert_ids_to_tokens(input_ids)
+      ent_pos = entity_positions[i]
+      ent_info = "Entities: "
+      for ent_s, ent_e in ent_pos:
+        ent = " ".join(input_toks[ent_s:ent_e+1])
+        ent_info += "{}-{}:{} | ".format(ent_s,ent_e,ent)
+        num_mention_pred += 1
+      f.write(ent_info+"\n")
+      for j, tok in enumerate(input_toks):
+        if tok == "<pad>": break
+        items = [tok, bound_map[mention_labels[j]]]
+        if mention_labels[j] == 1:
+          num_bio_pred += 1
+        f.write("\t".join(items)+"\n")
+      f.write("\n")
+
+    print ("B Total Pred: {}, Mention Total Pred:{}".format(num_bio_pred, num_mention_pred))
+    f.write("\n########BIO Head Prediction########\nB Total Pred: {}, Mention Total Pred:{}\n".format(num_bio_pred, num_mention_pred))
+    #print ("Gold NER: {}, Bio Total Pred: {}, Bio Pred Corr:{}".format(num_gold_ner, num_bio_pred, num_bio_corr))
+    #p = float(num_bio_corr) / num_bio_pred
+    #r = float(num_bio_corr) / num_gold_ner
+    #print ("Precision: {}, Recall: {}".format(p, r))
+    #f.write("\n########BIO Head Prediction########\nGold NER: {}, Bio Total Pred: {}, Bio Pred Corr:{}\n".format(num_gold_ner, num_bio_pred, num_bio_corr))
+    #f.write("Precision: {}, Recall: {}".format(p, r))
 
 
 def load_and_cache_examples(args, tokenizer, split='train', output_examples=False,
@@ -793,7 +863,12 @@ def main():
   )
   parser.add_argument("--target_task_name", type=str, default="mlqa", help="The target task name")
   parser.add_argument("--freeze_params", type=str, default="", help="prefix to be freezed, split by ',' (e.g. entity,bio).")
+  parser.add_argument("--output_entity_info", action="store_true",
+            help="Output entity info for debug.")
   args = parser.parse_args()
+
+  if args.model_type != "meae":
+    args.output_entity_info = False
 
   if (
     os.path.exists(args.output_dir)
