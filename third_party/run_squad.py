@@ -426,6 +426,7 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
       else:
         mention_bounds = np.append(mention_bounds, bio_logits.detach().cpu().numpy(), axis=0)
         all_input_ids = np.append(all_input_ids, inputs["input_ids"].detach().cpu().numpy(), axis=0)
+    outputs = outputs[:-3]
   
     for i, example_index in enumerate(example_indices):
       eval_feature = features[example_index.item()]
