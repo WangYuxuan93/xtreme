@@ -786,7 +786,7 @@ def main():
     "--save_only_best_checkpoint", action="store_true", help="save only the best checkpoint"
   )
   parser.add_argument("--target_task_name", type=str, default="mlqa", help="The target task name")
-
+  parser.add_argument("--freeze_params", type=str, default="", help="prefix to be freezed, split by ',' (e.g. entity,bio).")
   args = parser.parse_args()
 
   if (
@@ -867,6 +867,8 @@ def main():
     config=config,
     cache_dir=args.cache_dir if args.cache_dir else None,
   )
+  if len(args.freeze_params) > 0:
+    freeze(model, prefix=args.freeze_params.split(","))
 
   lang2id = config.lang2id if args.model_type == "xlm" else None
   logger.info("lang2id = {}".format(lang2id))
@@ -994,6 +996,22 @@ def main():
 
   return results
 
+
+def freeze(model, prefix=["mention"]):
+  for name, param in model.named_parameters():
+    for s in prefix:
+      if s in name:
+        param.requires_grad = False
+  
+  update_params = []
+  fixed_params = []
+  for name, param in model.named_parameters():
+    if param.requires_grad:
+      update_params.append(name)
+    else:
+      fixed_params.append(name)
+  logger.info("Updating keys:\n{}".format(update_params))
+  logger.info("Fixed keys:\n{}".format(fixed_params))
 
 if __name__ == "__main__":
   main()
