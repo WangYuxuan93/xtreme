@@ -354,6 +354,13 @@ def train(args, train_dataset, model, tokenizer):
   return global_step, tr_loss / global_step
 
 
+def get_external_mention_boundary(features, example_indices, batch):
+  for i, example_index in enumerate(example_indices):
+    eval_feature = features[example_index.item()]
+    print ("input_ids:\n", batch[0])
+    print ("feature:\n", eval_feature)
+    exit()
+
 def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang2id=None):
   dataset, examples, features = load_and_cache_examples(args, tokenizer, split, output_examples=True,
                               language=language, lang2id=lang2id)
@@ -395,6 +402,7 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
       example_indices = batch[3]
       if args.output_entity_info:
         inputs["output_entity_info"] = True
+      get_external_mention_boundary(features, example_indices, batch)
 
       # XLNet and XLM use more arguments for their predictions
       if args.model_type in ["xlnet", "xlm"]:
@@ -866,6 +874,10 @@ def main():
   parser.add_argument("--freeze_params", type=str, default="", help="prefix to be freezed, split by ',' (e.g. entity,bio).")
   parser.add_argument("--output_entity_info", action="store_true",
             help="Output entity info for debug.")
+  parser.add_argument("--use_external_mention_boundary", action="store_true",
+            help="Use TAGME to provide external mention boundary.")
+
+            
   args = parser.parse_args()
 
   if args.model_type != "meae":
@@ -1082,7 +1094,7 @@ def main():
   return results
 
 
-def freeze(model, prefix=["mention"]):
+def freeze(model, prefix=["entity_embedding"]):
   for name, param in model.named_parameters():
     for s in prefix:
       if s in name:
