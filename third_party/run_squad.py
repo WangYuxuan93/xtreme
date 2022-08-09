@@ -30,7 +30,7 @@ import torch
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm, trange
-from evaluate_squad import evaluate as squad_eval_metric
+from evaluate_mlqa import evaluate as squad_eval_metric
 
 from transformers import (
   WEIGHTS_NAME,
@@ -59,7 +59,7 @@ from transformers import (
 from transformers.data.metrics.squad_metrics import (
   compute_predictions_log_probs,
   compute_predictions_logits,
-  squad_evaluate,
+  #squad_evaluate,
 )
 
 from xlm_roberta import XLMRobertaForQuestionAnswering, XLMRobertaConfig
@@ -433,7 +433,10 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
   logger.info("  Evaluation done in total %f secs (%f sec per example)", evalTime, evalTime / len(dataset))
 
   # Compute predictions
-  pred_dir = os.path.join(args.output_dir, "predictions/{}".format(args.target_task_name))
+  if split == 'dev':
+    pred_dir = os.path.join(args.output_dir, "predictions/squad")
+  else:
+    pred_dir = os.path.join(args.output_dir, "predictions/{}".format(args.target_task_name))
   if not os.path.exists(pred_dir):
     os.makedirs(pred_dir)
   output_prediction_file = os.path.join(pred_dir, "predictions_{}_{}.json".format(language, prefix))
@@ -485,16 +488,19 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
   # Compute the F1 and exact scores.
   #results = squad_evaluate(examples, predictions)
   dataset_file = args.valid_file if split=='dev' else args.predict_file.replace("<lc>", language)
-  results = eval_squad(dataset_file, predictions)
+  results = eval_squad(dataset_file, predictions, language=language)
+  #results = eval_squad(dataset_file, output_prediction_file)
 
   return results
 
 
-def eval_squad(dataset_file, predictions):
+def eval_squad(dataset_file, predictions, language):
   with open(dataset_file) as dataset_file:
     dataset_json = json.load(dataset_file)
     dataset = dataset_json['data']
-  return squad_eval_metric(dataset, predictions)
+  #with open(prediction_file) as prediction_file:
+  #  predictions = json.load(prediction_file)
+  return squad_eval_metric(dataset, predictions, language)
 
 
 def load_and_cache_examples(args, tokenizer, split='train', output_examples=False,
@@ -928,6 +934,8 @@ def main():
   if args.do_eval and args.local_rank in [-1, 0]:
     logger.info("Loading checkpoints saved during training for evaluation")
     checkpoints = [args.output_dir]
+    if os.path.exists(os.path.join(args.output_dir, 'checkpoint-best')) and best_checkpoint != args.output_dir:
+      checkpoints.append(best_checkpoint)
     if args.eval_all_checkpoints:
       checkpoints = list(
         os.path.dirname(c)
@@ -939,11 +947,12 @@ def main():
     for checkpoint in checkpoints:
       # Reload the model
       global_step = checkpoint.split("-")[-1] if len(checkpoints) > 1 else ""
+      prefix = checkpoint.split("/")[-1] if checkpoint.find("checkpoint") != -1 else ""
       model = model_class.from_pretrained(checkpoint, force_download=True)
       model.to(args.device)
 
       # Evaluate
-      result = evaluate(args, model, tokenizer, split='dev', prefix=global_step, language=args.train_lang)
+      result = evaluate(args, model, tokenizer, split='dev', prefix=prefix, language=args.train_lang)
       if result['f1'] > best_score:
         best_checkpoint = checkpoint
         best_score = result['f1']
@@ -980,7 +989,7 @@ def main():
     model = model_class.from_pretrained(best_checkpoint, force_download=True)
     model.to(args.device)
     output_predict_file = os.path.join(args.output_dir, 'test_results.txt')
-    total = num = 0.0
+    total_f1 = total_em = num = 0.0
     with open(output_predict_file, 'a') as writer:
       writer.write('======= Predict using the model from {} for test:\n'.format(best_checkpoint))
       for language in args.eval_langs.split(','):
