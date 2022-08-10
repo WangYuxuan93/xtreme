@@ -24,6 +24,7 @@ import os
 import random
 import timeit
 import json
+import string
 
 import numpy as np
 import torch
@@ -354,12 +355,68 @@ def train(args, train_dataset, model, tokenizer):
   return global_step, tr_loss / global_step
 
 
-def get_external_mention_boundary(features, example_indices, batch):
+def get_external_mention_boundary(features, example_indices, max_seq_length=384, language="en", threshold=0.2):
+  import tagme
+  tagme.GCUBE_TOKEN = "9a00adf4-cd6a-407a-a491-d66381f3ed13-843339462"
+  mention_boundaries = []
   for i, example_index in enumerate(example_indices):
     eval_feature = features[example_index.item()]
-    print ("input_ids:\n", batch[0])
-    print ("feature:\n", eval_feature)
-    exit()
+    #print ("input_ids:\n", batch[0][i])
+    #print ("feature:\ntoken_to_orig_map:\n", eval_feature.token_to_orig_map)
+    tokenized_tokens = eval_feature.tokens
+    #print ("tokens:\n", eval_feature.tokens)
+    orig_tokens = []
+    token_to_orig_map = {}
+    for idx, tok in enumerate(tokenized_tokens):
+      if tok in ["<s>","</s>"] or tok in string.punctuation: 
+        orig_tokens.append(tok) 
+      elif tok.startswith("▁"):
+        orig_tokens.append(tok[1:])
+      else:
+        orig_tokens[-1] = orig_tokens[-1] + tok
+      token_to_orig_map[idx] = len(orig_tokens)-1
+    orig_to_token_map = {}
+    for tok, orig in token_to_orig_map.items():
+      if orig not in orig_to_token_map:
+        orig_to_token_map[orig] = []
+      orig_to_token_map[orig].append(tok)
+    #print ("orig tokens:\n", orig_tokens)
+    #print ("orig_to_token_map:\n", orig_to_token_map)
+    seq = " ".join(orig_tokens)
+    mention_result = tagme.mentions(seq, lang=language)
+    mention_preds = []
+    for mention in mention_result.mentions:
+      if mention.linkprob > threshold:
+        mention_preds.append(mention)
+        #print (mention)
+    cur_start, cur_end = 0, 0
+    mid = 0
+    mb_label = [0] * len(tokenized_tokens)
+    for idx, token in enumerate(orig_tokens):
+      cur_start = cur_end
+      cur_end += len(token)
+      #print ("cur start:{}, end:{}, mention start:{}, end:{}".format(cur_start, cur_end, mention_preds[mid].begin, mention_preds[mid].end))
+      if mid < len(mention_preds) and mention_preds[mid].begin == cur_start:
+         tok_ids = orig_to_token_map[idx]
+         mb_label[tok_ids[0]] = 1
+         if mid < len(mention_preds) and mention_preds[mid].end >= cur_end:
+           for tok_id in tok_ids[1:]:
+             mb_label[tok_id] = 2
+           if mention_preds[mid].end <= cur_end:
+             mid += 1 
+      elif mid < len(mention_preds) and mention_preds[mid].begin < cur_start and mention_preds[mid].end >= cur_end:
+        for tid in orig_to_token_map[idx]:
+          mb_label[tid] = 2
+        if mention_preds[mid].end <= cur_end:
+          mid += 1
+      cur_end += 1
+    while len(mb_label) < max_seq_length:
+      mb_label.append(-100)
+    #print ("mb_label:\n", mb_label)
+    mention_boundaries.append(mb_label)
+    #exit()
+  mention_boundaries = torch.from_numpy(np.array(mention_boundaries)).long()
+  return mention_boundaries
 
 def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang2id=None):
   dataset, examples, features = load_and_cache_examples(args, tokenizer, split, output_examples=True,
@@ -402,7 +459,10 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
       example_indices = batch[3]
       if args.output_entity_info:
         inputs["output_entity_info"] = True
-      get_external_mention_boundary(features, example_indices, batch)
+      if args.use_external_mention_boundary and language in ["en", "de", "it"]:
+        mention_boundaries = get_external_mention_boundary(features, example_indices, max_seq_length=args.max_seq_length, language=language, threshold=args.tagme_threshold)
+        #print ("input_ids:{}, mb:{}".format(batch[0].shape, mention_boundaries.shape))
+        #exit()
 
       # XLNet and XLM use more arguments for their predictions
       if args.model_type in ["xlnet", "xlm"]:
@@ -876,6 +936,7 @@ def main():
             help="Output entity info for debug.")
   parser.add_argument("--use_external_mention_boundary", action="store_true",
             help="Use TAGME to provide external mention boundary.")
+  parser.add_argument("--tagme_threshold", default=0.2, type=float, help="Threshold for TAGME.")
 
             
   args = parser.parse_args()
