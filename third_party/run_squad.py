@@ -458,6 +458,7 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
     tagme_mbs = []
     dataset_file = args.valid_file if split=='dev' else args.predict_file.replace("<lc>", language)
     tagme_file = dataset_file + ".tagme_prediction.maxseq_{}.json".format(args.max_seq_length)
+    tagme_data = None
     if os.path.exists(tagme_file):
       tagme_data = json.load(open(tagme_file, "r"))
   else:
@@ -477,7 +478,7 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
       if args.output_entity_info:
         inputs["output_entity_info"] = True
       if (args.get_external_mention_boundary or args.use_external_mention_boundary) and language in ["en", "de", "it"]:
-        mention_boundaries, mbs = get_external_mention_boundary(tagme_data, features, example_indices, max_seq_length=args.max_seq_length, language=language, threshold=args.tagme_threshold)
+        mention_boundaries, mbs = get_external_mention_boundary(features, example_indices, max_seq_length=args.max_seq_length, language=language, threshold=args.tagme_threshold, tagme_data=tagme_data)
         tagme_mbs.extend(mbs)
         #print ("input_ids:{}, mb:{}".format(batch[0].shape, mention_boundaries.shape))
         #exit()
