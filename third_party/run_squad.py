@@ -77,6 +77,11 @@ try:
 except ImportError:
   from tensorboardX import SummaryWriter
 
+try:
+  import tagme
+  tagme.GCUBE_TOKEN = "9a00adf4-cd6a-407a-a491-d66381f3ed13-843339462"
+except:
+  print ("Failed to load TAGME!")
 
 logger = logging.getLogger(__name__)
 
@@ -355,9 +360,7 @@ def train(args, train_dataset, model, tokenizer):
   return global_step, tr_loss / global_step
 
 
-def get_external_mention_boundary(features, example_indices, max_seq_length=384, language="en", threshold=0.2):
-  import tagme
-  tagme.GCUBE_TOKEN = "9a00adf4-cd6a-407a-a491-d66381f3ed13-843339462"
+def get_external_mention_boundary(features, example_indices, max_seq_length=384, language="en", threshold=0.2): 
   mention_boundaries = []
   for i, example_index in enumerate(example_indices):
     eval_feature = features[example_index.item()]
@@ -415,8 +418,8 @@ def get_external_mention_boundary(features, example_indices, max_seq_length=384,
     #print ("mb_label:\n", mb_label)
     mention_boundaries.append(mb_label)
     #exit()
-  mention_boundaries = torch.from_numpy(np.array(mention_boundaries)).long()
-  return mention_boundaries
+  mention_boundaries_ = torch.from_numpy(np.array(mention_boundaries)).long()
+  return mention_boundaries_, mention_boundaries
 
 def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang2id=None):
   dataset, examples, features = load_and_cache_examples(args, tokenizer, split, output_examples=True,
@@ -446,6 +449,9 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
   mention_bounds = None
   all_input_ids = None
 
+  if args.use_external_mention_boundary: 
+    tagme_mbs = []
+
   for batch in tqdm(eval_dataloader, desc="Evaluating"):
     model.eval()
     batch = tuple(t.to(args.device) for t in batch)
@@ -460,7 +466,8 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
       if args.output_entity_info:
         inputs["output_entity_info"] = True
       if args.use_external_mention_boundary and language in ["en", "de", "it"]:
-        mention_boundaries = get_external_mention_boundary(features, example_indices, max_seq_length=args.max_seq_length, language=language, threshold=args.tagme_threshold)
+        mention_boundaries, mbs = get_external_mention_boundary(features, example_indices, max_seq_length=args.max_seq_length, language=language, threshold=args.tagme_threshold)
+        tagme_mbs.extend(mbs)
         #print ("input_ids:{}, mb:{}".format(batch[0].shape, mention_boundaries.shape))
         #exit()
 
@@ -546,9 +553,15 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
     output_null_log_odds_file = os.path.join(pred_dir, "null_odds_{}.json".format(prefix))
   else:
     output_null_log_odds_file = None
-  
+
+  if args.use_external_mention_boundary and language in ["en", "de", "it"]:
+    tagme_file = os.path.join(pred_dir, "tagme_prediction_{}.json".format(language))
+    with open(tagme_file, "w") as fo:
+      json.dump(tagme_mbs, fo)
+
   if args.output_entity_info:
     write_entity_info(args, tokenizer, all_input_ids, mention_preds, language, entity_positions, pred_dir)
+
 
   # XLNet and XLM use a more complex post-processing procedure
   if args.model_type in ["xlnet", "xlm"]:
