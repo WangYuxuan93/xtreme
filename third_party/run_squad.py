@@ -25,6 +25,7 @@ import random
 import timeit
 import json
 import string
+from tkinter.messagebox import NO
 
 import numpy as np
 import torch
@@ -448,9 +449,11 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
   entity_positions = []
   mention_bounds = None
   all_input_ids = None
-
-  if args.use_external_mention_boundary: 
+  
+  if args.get_external_mention_boundary or args.use_external_mention_boundary: 
     tagme_mbs = []
+  else:
+    tagme_mbs = None
 
   for batch in tqdm(eval_dataloader, desc="Evaluating"):
     model.eval()
@@ -465,11 +468,14 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
       example_indices = batch[3]
       if args.output_entity_info:
         inputs["output_entity_info"] = True
-      if args.use_external_mention_boundary and language in ["en", "de", "it"]:
+      if (args.get_external_mention_boundary or args.use_external_mention_boundary) and language in ["en", "de", "it"]:
         mention_boundaries, mbs = get_external_mention_boundary(features, example_indices, max_seq_length=args.max_seq_length, language=language, threshold=args.tagme_threshold)
         tagme_mbs.extend(mbs)
         #print ("input_ids:{}, mb:{}".format(batch[0].shape, mention_boundaries.shape))
         #exit()
+        if args.use_external_mention_boundary:
+          inputs["mention_boundaries"] = mention_boundaries
+          inputs["use_external_mention_boundary"] = True
 
       # XLNet and XLM use more arguments for their predictions
       if args.model_type in ["xlnet", "xlm"]:
@@ -554,13 +560,14 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
   else:
     output_null_log_odds_file = None
 
-  if args.use_external_mention_boundary and language in ["en", "de", "it"]:
+  if (args.get_external_mention_boundary or args.use_external_mention_boundary) and language in ["en", "de", "it"]:
     tagme_file = os.path.join(pred_dir, "tagme_prediction_{}.json".format(language))
     with open(tagme_file, "w") as fo:
       json.dump(tagme_mbs, fo)
 
   if args.output_entity_info:
-    write_entity_info(args, tokenizer, all_input_ids, mention_preds, language, entity_positions, pred_dir)
+    write_entity_info(args, tokenizer, all_input_ids, mention_preds, language, entity_positions, pred_dir,
+                      tagme_mbs=tagme_mbs)
 
 
   # XLNet and XLM use a more complex post-processing procedure
@@ -619,40 +626,78 @@ def eval_squad(dataset_file, predictions, language):
   return squad_eval_metric(dataset, predictions, language)
 
 
-def write_entity_info(args, tokenizer, all_input_ids, mention_preds, lang, entity_positions, pred_dir):
-  output_dir = os.path.join(pred_dir, "{}_entity_info.txt".format(lang))
-  num_gold_ner = 0
-  num_bio_corr = 0
-  num_bio_pred = 0
-  num_mention_pred = 0
-  bound_map = {0: "O", 1: "B", 2: "I", -100: "<PAD>"}
-  with open(output_dir, "w") as f:
-    for i, input_ids in enumerate(all_input_ids):
-      mention_labels = mention_preds[i]
-      input_toks = tokenizer.convert_ids_to_tokens(input_ids)
-      ent_pos = entity_positions[i]
-      ent_info = "Entities: "
-      for ent_s, ent_e in ent_pos:
-        ent = " ".join(input_toks[ent_s:ent_e+1])
-        ent_info += "{}-{}:{} | ".format(ent_s,ent_e,ent)
-        num_mention_pred += 1
-      f.write(ent_info+"\n")
-      for j, tok in enumerate(input_toks):
-        if tok == "<pad>": break
-        items = [tok, bound_map[mention_labels[j]]]
-        if mention_labels[j] == 1:
-          num_bio_pred += 1
-        f.write("\t".join(items)+"\n")
-      f.write("\n")
+def write_entity_info(args, tokenizer, all_input_ids, mention_preds, lang, entity_positions, pred_dir,
+                      tagme_mbs=None):
+  if tagme_mbs is None:
+    output_dir = os.path.join(pred_dir, "{}_entity_info.txt".format(lang))
+    num_bio_pred = 0
+    num_mention_pred = 0
+    bound_map = {0: "O", 1: "B", 2: "I", -100: "<PAD>"}
+    with open(output_dir, "w") as f:
+      for i, input_ids in enumerate(all_input_ids):
+        mention_labels = mention_preds[i]
+        input_toks = tokenizer.convert_ids_to_tokens(input_ids)
+        ent_pos = entity_positions[i]
+        ent_info = "Entities: "
+        for ent_s, ent_e in ent_pos:
+          ent = " ".join(input_toks[ent_s:ent_e+1])
+          ent_info += "{}-{}:{} | ".format(ent_s,ent_e,ent)
+          num_mention_pred += 1
+        f.write(ent_info+"\n")
+        for j, tok in enumerate(input_toks):
+          if tok == "<pad>": break
+          items = [tok, bound_map[mention_labels[j]]]
+          if mention_labels[j] == 1:
+            num_bio_pred += 1
+          f.write("\t".join(items)+"\n")
+        f.write("\n")
+      print ("B Total Pred: {}, Mention Total Pred:{}".format(num_bio_pred, num_mention_pred))
+      f.write("\n########BIO Head Prediction########\nB Total Pred: {}, Mention Total Pred:{}\n".format(num_bio_pred, num_mention_pred))
+  else:
+    output_dir = os.path.join(pred_dir, "{}_entity_info.txt".format(lang))
+    num_gold_ner = 0
+    num_bio_corr = 0
+    num_bio_pred = 0
+    num_mention_pred = 0
+    bound_map = {0: "O", 1: "B", 2: "I", -100: "<PAD>"}
+    with open(output_dir, "w") as f:
+      for i, input_ids in enumerate(all_input_ids):
+        tagme_labels = tagme_mbs[i]
+        mention_labels = mention_preds[i]
+        input_toks = tokenizer.convert_ids_to_tokens(input_ids)
+        ent_pos = entity_positions[i]
+        ent_info = "Entities: "
+        for ent_s, ent_e in ent_pos:
+          ent = " ".join(input_toks[ent_s:ent_e+1])
+          ent_info += "{}-{}:{} | ".format(ent_s,ent_e,ent)
+          num_mention_pred += 1
+          flag = False
+          if tagme_labels[ent_s] == 1:
+            flag = True
+            for k in range(ent_s, ent_e):
+              if tagme_labels[k] != 2:
+                flag = False
+          if flag:
+            num_bio_corr += 1
+        f.write(ent_info+"\n")
+        for j, tok in enumerate(input_toks):
+          if tok == "<pad>": break
+          items = [tok, bound_map[tagme_labels[j]], bound_map[mention_labels[j]]]
+          if mention_labels[j] == 1:
+            num_bio_pred += 1
+          if tagme_labels[j] == 1:
+            num_gold_ner += 1
+          f.write("\t".join(items)+"\n")
+        f.write("\n")
 
-    print ("B Total Pred: {}, Mention Total Pred:{}".format(num_bio_pred, num_mention_pred))
-    f.write("\n########BIO Head Prediction########\nB Total Pred: {}, Mention Total Pred:{}\n".format(num_bio_pred, num_mention_pred))
-    #print ("Gold NER: {}, Bio Total Pred: {}, Bio Pred Corr:{}".format(num_gold_ner, num_bio_pred, num_bio_corr))
-    #p = float(num_bio_corr) / num_bio_pred
-    #r = float(num_bio_corr) / num_gold_ner
-    #print ("Precision: {}, Recall: {}".format(p, r))
-    #f.write("\n########BIO Head Prediction########\nGold NER: {}, Bio Total Pred: {}, Bio Pred Corr:{}\n".format(num_gold_ner, num_bio_pred, num_bio_corr))
-    #f.write("Precision: {}, Recall: {}".format(p, r))
+      #print ("B Total Pred: {}, Mention Total Pred:{}".format(num_bio_pred, num_mention_pred))
+      #f.write("\n########BIO Head Prediction########\nB Total Pred: {}, Mention Total Pred:{}\n".format(num_bio_pred, num_mention_pred))
+      print ("TAGME Mentions: {}, Bio Total Pred: {}, Bio Pred Corr:{}".format(num_gold_ner, num_bio_pred, num_bio_corr))
+      p = float(num_bio_corr) / num_bio_pred
+      r = float(num_bio_corr) / num_gold_ner
+      print ("Precision: {}, Recall: {}".format(p, r))
+      f.write("\n########BIO Head Prediction########\nTAGME Mentions: {}, Bio Total Pred: {}, Bio Pred Corr:{}\n".format(num_gold_ner, num_bio_pred, num_bio_corr))
+      f.write("Precision: {}, Recall: {}".format(p, r))
 
 
 def load_and_cache_examples(args, tokenizer, split='train', output_examples=False,
@@ -947,8 +992,10 @@ def main():
   parser.add_argument("--freeze_params", type=str, default="", help="prefix to be freezed, split by ',' (e.g. entity,bio).")
   parser.add_argument("--output_entity_info", action="store_true",
             help="Output entity info for debug.")
+  parser.add_argument("--get_external_mention_boundary", action="store_true",
+            help="Use TAGME to obtain external mention boundary.")
   parser.add_argument("--use_external_mention_boundary", action="store_true",
-            help="Use TAGME to provide external mention boundary.")
+            help="Use TAGME to predicted external mention boundary.")
   parser.add_argument("--tagme_threshold", default=0.2, type=float, help="Threshold for TAGME.")
 
             
