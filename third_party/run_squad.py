@@ -361,59 +361,63 @@ def train(args, train_dataset, model, tokenizer):
   return global_step, tr_loss / global_step
 
 
-def get_external_mention_boundary(features, example_indices, max_seq_length=384, language="en", threshold=0.2): 
+def get_external_mention_boundary(features, example_indices, max_seq_length=384, 
+                                  language="en", threshold=0.2, tagme_data=None): 
   mention_boundaries = []
   for i, example_index in enumerate(example_indices):
-    eval_feature = features[example_index.item()]
-    #print ("input_ids:\n", batch[0][i])
-    #print ("feature:\ntoken_to_orig_map:\n", eval_feature.token_to_orig_map)
-    tokenized_tokens = eval_feature.tokens
-    #print ("tokens:\n", eval_feature.tokens)
-    orig_tokens = []
-    token_to_orig_map = {}
-    for idx, tok in enumerate(tokenized_tokens):
-      if tok in ["<s>","</s>"] or tok in string.punctuation: 
-        orig_tokens.append(tok) 
-      elif tok.startswith("▁"):
-        orig_tokens.append(tok[1:])
-      else:
-        orig_tokens[-1] = orig_tokens[-1] + tok
-      token_to_orig_map[idx] = len(orig_tokens)-1
-    orig_to_token_map = {}
-    for tok, orig in token_to_orig_map.items():
-      if orig not in orig_to_token_map:
-        orig_to_token_map[orig] = []
-      orig_to_token_map[orig].append(tok)
-    #print ("orig tokens:\n", orig_tokens)
-    #print ("orig_to_token_map:\n", orig_to_token_map)
-    seq = " ".join(orig_tokens)
-    mention_result = tagme.mentions(seq, lang=language)
-    mention_preds = []
-    for mention in mention_result.mentions:
-      if mention.linkprob > threshold:
-        mention_preds.append(mention)
-        #print (mention)
-    cur_start, cur_end = 0, 0
-    mid = 0
-    mb_label = [0] * len(tokenized_tokens)
-    for idx, token in enumerate(orig_tokens):
-      cur_start = cur_end
-      cur_end += len(token)
-      #print ("cur start:{}, end:{}, mention start:{}, end:{}".format(cur_start, cur_end, mention_preds[mid].begin, mention_preds[mid].end))
-      if mid < len(mention_preds) and mention_preds[mid].begin == cur_start:
-         tok_ids = orig_to_token_map[idx]
-         mb_label[tok_ids[0]] = 1
-         if mid < len(mention_preds) and mention_preds[mid].end >= cur_end:
-           for tok_id in tok_ids[1:]:
-             mb_label[tok_id] = 2
-           if mention_preds[mid].end <= cur_end:
-             mid += 1 
-      elif mid < len(mention_preds) and mention_preds[mid].begin < cur_start and mention_preds[mid].end >= cur_end:
-        for tid in orig_to_token_map[idx]:
-          mb_label[tid] = 2
-        if mention_preds[mid].end <= cur_end:
-          mid += 1
-      cur_end += 1
+    if tagme_data is not None:
+      mb_label = tagme_data[example_index.item()]
+    else:
+      eval_feature = features[example_index.item()]
+      #print ("input_ids:\n", batch[0][i])
+      #print ("feature:\ntoken_to_orig_map:\n", eval_feature.token_to_orig_map)
+      tokenized_tokens = eval_feature.tokens
+      #print ("tokens:\n", eval_feature.tokens)
+      orig_tokens = []
+      token_to_orig_map = {}
+      for idx, tok in enumerate(tokenized_tokens):
+        if tok in ["<s>","</s>"] or tok in string.punctuation: 
+          orig_tokens.append(tok) 
+        elif tok.startswith("▁"):
+          orig_tokens.append(tok[1:])
+        else:
+          orig_tokens[-1] = orig_tokens[-1] + tok
+        token_to_orig_map[idx] = len(orig_tokens)-1
+      orig_to_token_map = {}
+      for tok, orig in token_to_orig_map.items():
+        if orig not in orig_to_token_map:
+          orig_to_token_map[orig] = []
+        orig_to_token_map[orig].append(tok)
+      #print ("orig tokens:\n", orig_tokens)
+      #print ("orig_to_token_map:\n", orig_to_token_map)
+      seq = " ".join(orig_tokens)
+      mention_result = tagme.mentions(seq, lang=language)
+      mention_preds = []
+      for mention in mention_result.mentions:
+        if mention.linkprob > threshold:
+          mention_preds.append(mention)
+          #print (mention)
+      cur_start, cur_end = 0, 0
+      mid = 0
+      mb_label = [0] * len(tokenized_tokens)
+      for idx, token in enumerate(orig_tokens):
+        cur_start = cur_end
+        cur_end += len(token)
+        #print ("cur start:{}, end:{}, mention start:{}, end:{}".format(cur_start, cur_end, mention_preds[mid].begin, mention_preds[mid].end))
+        if mid < len(mention_preds) and mention_preds[mid].begin == cur_start:
+          tok_ids = orig_to_token_map[idx]
+          mb_label[tok_ids[0]] = 1
+          if mid < len(mention_preds) and mention_preds[mid].end >= cur_end:
+            for tok_id in tok_ids[1:]:
+              mb_label[tok_id] = 2
+            if mention_preds[mid].end <= cur_end:
+              mid += 1 
+        elif mid < len(mention_preds) and mention_preds[mid].begin < cur_start and mention_preds[mid].end >= cur_end:
+          for tid in orig_to_token_map[idx]:
+            mb_label[tid] = 2
+          if mention_preds[mid].end <= cur_end:
+            mid += 1
+        cur_end += 1
     while len(mb_label) < max_seq_length:
       mb_label.append(-100)
     #print ("mb_label:\n", mb_label)
@@ -452,6 +456,10 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
   
   if args.get_external_mention_boundary or args.use_external_mention_boundary: 
     tagme_mbs = []
+    dataset_file = args.valid_file if split=='dev' else args.predict_file.replace("<lc>", language)
+    tagme_file = dataset_file + ".tagme_prediction.maxseq_{}.json".format(args.max_seq_length)
+    if os.path.exists(tagme_file):
+      tagme_data = json.load(open(tagme_file, "r"))
   else:
     tagme_mbs = None
 
@@ -469,7 +477,7 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
       if args.output_entity_info:
         inputs["output_entity_info"] = True
       if (args.get_external_mention_boundary or args.use_external_mention_boundary) and language in ["en", "de", "it"]:
-        mention_boundaries, mbs = get_external_mention_boundary(features, example_indices, max_seq_length=args.max_seq_length, language=language, threshold=args.tagme_threshold)
+        mention_boundaries, mbs = get_external_mention_boundary(tagme_data, features, example_indices, max_seq_length=args.max_seq_length, language=language, threshold=args.tagme_threshold)
         tagme_mbs.extend(mbs)
         #print ("input_ids:{}, mb:{}".format(batch[0].shape, mention_boundaries.shape))
         #exit()
@@ -561,9 +569,11 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
     output_null_log_odds_file = None
 
   if (args.get_external_mention_boundary or args.use_external_mention_boundary) and language in ["en", "de", "it"]:
-    tagme_file = os.path.join(pred_dir, "tagme_prediction_{}.json".format(language))
-    with open(tagme_file, "w") as fo:
-      json.dump(tagme_mbs, fo)
+    #tagme_file = os.path.join(pred_dir, "tagme_prediction_{}.json".format(language))
+    if not os.path.exists(tagme_file):
+      logger.info("Writing TAGME predictions to: {}.".format(tagme_file))
+      with open(tagme_file, "w") as fo:
+        json.dump(tagme_mbs, fo)
 
   if args.output_entity_info:
     write_entity_info(args, tokenizer, all_input_ids, mention_preds, language, entity_positions, pred_dir,
