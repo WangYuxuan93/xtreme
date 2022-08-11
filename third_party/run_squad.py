@@ -24,6 +24,7 @@ import os
 import random
 import timeit
 import json
+import jsonlines
 import string
 from tkinter.messagebox import NO
 
@@ -457,10 +458,14 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
   if args.get_external_mention_boundary or args.use_external_mention_boundary: 
     tagme_mbs = []
     dataset_file = args.valid_file if split=='dev' else args.predict_file.replace("<lc>", language)
-    tagme_file = dataset_file + ".tagme_prediction.maxseq_{}.json".format(args.max_seq_length)
+    tagme_file = dataset_file + ".tagme_prediction.maxseq_{}.jsonl".format(args.max_seq_length)
     tagme_data = None
     if os.path.exists(tagme_file):
-      tagme_data = json.load(open(tagme_file, "r"))
+      tagme_data = []
+      with jsonlines.open(tagme_file, "r") as fi:
+        for data in fi:
+          tagme_data.append(data)
+      #tagme_data = json.load(open(tagme_file, "r"))
   else:
     tagme_mbs = None
 
@@ -478,13 +483,28 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
       if args.output_entity_info:
         inputs["output_entity_info"] = True
       if (args.get_external_mention_boundary or args.use_external_mention_boundary) and language in ["en", "de", "it"]:
-        mention_boundaries, mbs = get_external_mention_boundary(features, example_indices, max_seq_length=args.max_seq_length, language=language, threshold=args.tagme_threshold, tagme_data=tagme_data)
+        mention_boundaries, mbs = get_external_mention_boundary(
+              features, 
+              example_indices, 
+              max_seq_length=args.max_seq_length, 
+              language=language, 
+              threshold=args.tagme_threshold, 
+              tagme_data=tagme_data
+            )
         tagme_mbs.extend(mbs)
         #print ("input_ids:{}, mb:{}".format(batch[0].shape, mention_boundaries.shape))
         #exit()
         if args.use_external_mention_boundary:
           inputs["mention_boundaries"] = mention_boundaries
           inputs["use_external_mention_boundary"] = True
+        
+        if (args.get_external_mention_boundary or args.use_external_mention_boundary) and language in ["en", "de", "it"]:
+          #tagme_file = os.path.join(pred_dir, "tagme_prediction_{}.json".format(language))
+          #if not os.path.exists(tagme_file):
+          logger.info("Writing TAGME predictions to: {}.".format(tagme_file))
+          with jsonlines.open(tagme_file, "a") as fo:
+            for data in mbs:
+              fo.write(data)
 
       # XLNet and XLM use more arguments for their predictions
       if args.model_type in ["xlnet", "xlm"]:
@@ -569,12 +589,12 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
   else:
     output_null_log_odds_file = None
 
-  if (args.get_external_mention_boundary or args.use_external_mention_boundary) and language in ["en", "de", "it"]:
+  #if (args.get_external_mention_boundary or args.use_external_mention_boundary) and language in ["en", "de", "it"]:
     #tagme_file = os.path.join(pred_dir, "tagme_prediction_{}.json".format(language))
-    if not os.path.exists(tagme_file):
-      logger.info("Writing TAGME predictions to: {}.".format(tagme_file))
-      with open(tagme_file, "w") as fo:
-        json.dump(tagme_mbs, fo)
+  #  if not os.path.exists(tagme_file):
+  #    logger.info("Writing TAGME predictions to: {}.".format(tagme_file))
+  #    with open(tagme_file, "w") as fo:
+  #      json.dump(tagme_mbs, fo)
 
   if args.output_entity_info:
     write_entity_info(args, tokenizer, all_input_ids, mention_preds, language, entity_positions, pred_dir,
