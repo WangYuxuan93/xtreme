@@ -706,7 +706,7 @@ def write_entity_info(args, tokenizer, all_input_ids, mention_preds, lang, entit
           flag = False
           if tagme_labels[ent_s] == 1:
             flag = True
-            for k in range(ent_s, ent_e):
+            for k in range(ent_s+1, ent_e+1):
               if tagme_labels[k] != 2:
                 flag = False
           if flag:
@@ -724,8 +724,8 @@ def write_entity_info(args, tokenizer, all_input_ids, mention_preds, lang, entit
 
       #print ("B Total Pred: {}, Mention Total Pred:{}".format(num_bio_pred, num_mention_pred))
       #f.write("\n########BIO Head Prediction########\nB Total Pred: {}, Mention Total Pred:{}\n".format(num_bio_pred, num_mention_pred))
-      print ("TAGME Mentions: {}, Bio Total Pred: {}, Bio Pred Corr:{}".format(num_gold_ner, num_bio_pred, num_bio_corr))
-      p = float(num_bio_corr) / num_bio_pred
+      print ("TAGME Mentions: {}, Bio Total Pred: {}, Mention Pred: {}, Bio Pred Corr:{}".format(num_gold_ner, num_bio_pred, num_mention_pred, num_bio_corr))
+      p = float(num_bio_corr) / num_mention_pred
       r = float(num_bio_corr) / num_gold_ner
       print ("Precision: {}, Recall: {}".format(p, r))
       f.write("\n########BIO Head Prediction########\nTAGME Mentions: {}, Bio Total Pred: {}, Bio Pred Corr:{}\n".format(num_gold_ner, num_bio_pred, num_bio_corr))
