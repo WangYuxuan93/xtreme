@@ -366,7 +366,7 @@ def get_external_mention_boundary(features, example_indices, max_seq_length=384,
                                   language="en", threshold=0.2, tagme_data=None): 
   mention_boundaries = []
   for i, example_index in enumerate(example_indices):
-    if tagme_data is not None:
+    if tagme_data is not None and len(tagme_data) > example_index.item():
       mb_label = tagme_data[example_index.item()]
     else:
       eval_feature = features[example_index.item()]
@@ -501,10 +501,11 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
         if (args.get_external_mention_boundary or args.use_external_mention_boundary) and language in ["en", "de", "it"]:
           #tagme_file = os.path.join(pred_dir, "tagme_prediction_{}.json".format(language))
           #if not os.path.exists(tagme_file):
-          logger.info("Writing TAGME predictions to: {}.".format(tagme_file))
-          with jsonlines.open(tagme_file, "a") as fo:
-            for data in mbs:
-              fo.write(data)
+          if tagme_data is None or len(tagme_data) <= example_indices[0].item():
+            logger.info("Writing TAGME predictions to: {}.".format(tagme_file))
+            with jsonlines.open(tagme_file, "a") as fo:
+              for data in mbs:
+                fo.write(data)
 
       # XLNet and XLM use more arguments for their predictions
       if args.model_type in ["xlnet", "xlm"]:
