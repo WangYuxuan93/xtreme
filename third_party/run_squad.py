@@ -495,7 +495,7 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
         #print ("input_ids:{}, mb:{}".format(batch[0].shape, mention_boundaries.shape))
         #exit()
         if args.use_external_mention_boundary:
-          inputs["mention_boundaries"] = mention_boundaries
+          inputs["mention_boundaries"] = mention_boundaries.to(args.device)
           inputs["use_external_mention_boundary"] = True
         
         if (args.get_external_mention_boundary or args.use_external_mention_boundary) and language in ["en", "de", "it"]:
