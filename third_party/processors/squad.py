@@ -451,6 +451,7 @@ def squad_convert_examples_to_features(
     else:
       all_start_positions = torch.tensor([f.start_position for f in features], dtype=torch.long)
       all_end_positions = torch.tensor([f.end_position for f in features], dtype=torch.long)
+      all_example_index = torch.arange(all_input_ids.size(0), dtype=torch.long)
       if add_mention_boundary:
         dataset = TensorDataset(
           all_input_ids,
@@ -461,6 +462,7 @@ def squad_convert_examples_to_features(
           all_cls_index,
           all_p_mask,
           all_langs,
+          all_example_index,
           all_mention_boundaries,
         )
       else:
@@ -473,6 +475,7 @@ def squad_convert_examples_to_features(
           all_cls_index,
           all_p_mask,
           all_langs,
+          all_example_index,
         )
 
     return features, dataset

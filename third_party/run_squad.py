@@ -213,6 +213,21 @@ def train(args, train_dataset, model, tokenizer):
   # Added here for reproductibility
   set_seed(args)
 
+  tagme_mbs = None
+  if args.get_external_mention_boundary or args.use_external_mention_boundary: 
+    tagme_mbs = []
+    dataset_file = args.train_file
+    tagme_file = dataset_file + ".tagme_prediction.maxseq_{}.jsonl".format(args.max_seq_length)
+    tagme_data = None
+    if os.path.exists(tagme_file):
+      tagme_data = []
+      with jsonlines.open(tagme_file, "r") as fi:
+        for data in fi:
+          tagme_data.append(data)
+    else:
+      logger.info("TAGME prediction file {} does not exist!".format(tagme_file))
+      exit()
+
   for _ in train_iterator:
     epoch_iterator = tqdm(train_dataloader, desc="Iteration", disable=args.local_rank not in [-1, 0])
     for step, batch in enumerate(epoch_iterator):
@@ -232,10 +247,22 @@ def train(args, train_dataset, model, tokenizer):
         "start_positions": batch[3],
         "end_positions": batch[4],
       }
+      example_indices = batch[8]
+      if (args.get_external_mention_boundary or args.use_external_mention_boundary) and language in ["en", "de", "it"]:
+        mention_boundaries, mbs = get_external_mention_boundary(
+              None, 
+              example_indices, 
+              max_seq_length=args.max_seq_length, 
+              language=language, 
+              threshold=args.tagme_threshold, 
+              tagme_data=tagme_data
+            )
+        tagme_mbs.extend(mbs)
 
-      if args.use_external_mention_boundary:
-        inputs["mention_boundaries"] = batch[8]
-        inputs["use_external_mention_boundary"] = True
+        if args.use_external_mention_boundary:
+          inputs["mention_boundaries"] = mention_boundaries.to(args.device)
+          #inputs["mention_boundaries"] = batch[9]
+          inputs["use_external_mention_boundary"] = True
 
       if args.model_type in ["xlnet", "xlm"]:
         inputs.update({"cls_index": batch[5], "p_mask": batch[6]})
@@ -513,7 +540,6 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
           
         
         if (args.get_external_mention_boundary or args.use_external_mention_boundary) and language in ["en", "de", "it"]:
-          tagme_file = os.path.join(pred_dir, "tagme_prediction_{}.jsonl".format(language))
           if not os.path.exists(tagme_file):
             if tagme_data is None or len(tagme_data) <= example_indices[0].item():
               logger.info("Writing TAGME predictions to: {}.".format(tagme_file))
