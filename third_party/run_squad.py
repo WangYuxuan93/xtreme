@@ -394,10 +394,11 @@ def get_external_mention_boundary(features, example_indices, max_seq_length=384,
       seq = " ".join(orig_tokens)
       mention_result = tagme.mentions(seq, lang=language)
       mention_preds = []
-      for mention in mention_result.mentions:
-        if mention.linkprob > threshold:
-          mention_preds.append(mention)
-          #print (mention)
+      if mention_result:
+        for mention in mention_result.mentions:
+          if mention.linkprob > threshold:
+            mention_preds.append(mention)
+            #print (mention)
       cur_start, cur_end = 0, 0
       mid = 0
       mb_label = [0] * len(tokenized_tokens)
@@ -1168,10 +1169,10 @@ def main():
     model.to(args.device)
 
   results = {}
-  if os.path.exists(os.path.join(args.output_dir, 'checkpoint-best')):
-    best_checkpoint = os.path.join(args.output_dir, 'checkpoint-best')
-  else:
-    best_checkpoint = args.output_dir
+  #if os.path.exists(os.path.join(args.output_dir, 'checkpoint-best')):
+  #  best_checkpoint = os.path.join(args.output_dir, 'checkpoint-best')
+  #else:
+  best_checkpoint = args.output_dir
   best_score = 0
   # Evaluation - we can ask to evaluate all the checkpoints (sub-directories) in a directory
   if args.do_eval and args.local_rank in [-1, 0]:
