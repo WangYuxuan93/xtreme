@@ -507,21 +507,21 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
         if tagme_mbs is None:
           tagme_mbs = batch[7].detach().cpu().numpy()
         else:
-          tagme_mbs = np.append(tagme_mbs, batch[7].detach().cpu().numpy())
+          tagme_mbs = np.append(tagme_mbs, batch[7].detach().cpu().numpy(), axis=0)
         if args.use_external_mention_boundary:
           #inputs["mention_boundaries"] = mention_boundaries.to(args.device)
           inputs["mention_boundaries"] = batch[7]
           inputs["use_external_mention_boundary"] = True
           
         
-        if (args.get_external_mention_boundary or args.use_external_mention_boundary) and language in ["en", "de", "it"]:
+      #  if (args.get_external_mention_boundary or args.use_external_mention_boundary) and language in ["en", "de", "it"]:
           #tagme_file = os.path.join(pred_dir, "tagme_prediction_{}.json".format(language))
           #if not os.path.exists(tagme_file):
-          if tagme_data is None or len(tagme_data) <= example_indices[0].item():
-            logger.info("Writing TAGME predictions to: {}.".format(tagme_file))
-            with jsonlines.open(tagme_file, "a") as fo:
-              for data in mbs:
-                fo.write(data)
+          #if tagme_data is None or len(tagme_data) <= example_indices[0].item():
+          #  logger.info("Writing TAGME predictions to: {}.".format(tagme_file))
+          #  with jsonlines.open(tagme_file, "a") as fo:
+          #    for data in mbs:
+          #      fo.write(data)
 
       # XLNet and XLM use more arguments for their predictions
       if args.model_type in ["xlnet", "xlm"]:

@@ -300,7 +300,11 @@ def tagme_mention_boundary(tokens, max_seq_length=384, language="en", threshold=
   #print ("orig tokens:\n", orig_tokens)
   #print ("orig_to_token_map:\n", orig_to_token_map)
   seq = " ".join(orig_tokens)
-  mention_result = tagme.mentions(seq, lang=language)
+  try:
+    mention_result = tagme.mentions(seq, lang=language)
+  except:
+    print ("Failed tagging sequence: {}".format(seq))
+    mention_result = None
   mention_preds = []
   if mention_result:
     for mention in mention_result.mentions:
