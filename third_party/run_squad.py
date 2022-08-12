@@ -233,6 +233,10 @@ def train(args, train_dataset, model, tokenizer):
         "end_positions": batch[4],
       }
 
+      if args.use_external_mention_boundary:
+        inputs["mention_boundaries"] = batch[8]
+        inputs["use_external_mention_boundary"] = True
+
       if args.model_type in ["xlnet", "xlm"]:
         inputs.update({"cls_index": batch[5], "p_mask": batch[6]})
         if args.version_2_with_negative:
@@ -484,6 +488,7 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
       if args.output_entity_info:
         inputs["output_entity_info"] = True
       if (args.get_external_mention_boundary or args.use_external_mention_boundary) and language in ["en", "de", "it"]:
+        """
         mention_boundaries, mbs = get_external_mention_boundary(
               features, 
               example_indices, 
@@ -493,10 +498,12 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
               tagme_data=tagme_data
             )
         tagme_mbs.extend(mbs)
+        """
         #print ("input_ids:{}, mb:{}".format(batch[0].shape, mention_boundaries.shape))
         #exit()
         if args.use_external_mention_boundary:
-          inputs["mention_boundaries"] = mention_boundaries.to(args.device)
+          #inputs["mention_boundaries"] = mention_boundaries.to(args.device)
+          inputs["mention_boundaries"] = batch[7]
           inputs["use_external_mention_boundary"] = True
         
         if (args.get_external_mention_boundary or args.use_external_mention_boundary) and language in ["en", "de", "it"]:
@@ -767,10 +774,19 @@ def load_and_cache_examples(args, tokenizer, split='train', output_examples=Fals
   )
 
   # Init features and dataset from cache if it exists
-  if os.path.exists(cached_features_file) and not args.overwrite_cache and not output_examples:
+  if os.path.exists(cached_features_file) and not args.overwrite_cache: #and not output_examples:
     logger.info("Loading features from cached file %s", cached_features_file)
     features_and_dataset = torch.load(cached_features_file)
     features, dataset = features_and_dataset["features"], features_and_dataset["dataset"]
+    if output_examples:
+      processor = SquadV2Processor() if args.version_2_with_negative else SquadV1Processor()
+      if split == 'test':
+        pred_file = args.predict_file.replace("<lc>", language)
+        examples = processor.get_dev_examples(args.data_dir, filename=pred_file, language=language)
+      elif split == 'dev':
+        examples = processor.get_dev_examples(args.data_dir, filename=args.valid_file, language=language)
+      else:
+        examples = processor.get_train_examples(args.data_dir, filename=args.train_file, language=language)
   else:
     logger.info("Creating features from dataset file at %s", input_dir)
 
@@ -804,7 +820,9 @@ def load_and_cache_examples(args, tokenizer, split='train', output_examples=Fals
       is_training=not evaluate,
       return_dataset="pt",
       threads=args.threads,
-      lang2id=lang2id
+      lang2id=lang2id,
+      threshold=args.threshold,
+      get_external_mention_boundary=(args.get_external_mention_boundary or args.use_external_mention_boundary),
     )
 
     if args.local_rank in [-1, 0]:
