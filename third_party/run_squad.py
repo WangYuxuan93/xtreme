@@ -460,6 +460,7 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
   mention_bounds = None
   all_input_ids = None
   
+  """
   if args.get_external_mention_boundary or args.use_external_mention_boundary: 
     tagme_mbs = []
     dataset_file = args.valid_file if split=='dev' else args.predict_file.replace("<lc>", language)
@@ -473,6 +474,8 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
       #tagme_data = json.load(open(tagme_file, "r"))
   else:
     tagme_mbs = None
+  """
+  tagme_mbs = None
 
   for batch in tqdm(eval_dataloader, desc="Evaluating"):
     model.eval()
@@ -501,10 +504,15 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
         """
         #print ("input_ids:{}, mb:{}".format(batch[0].shape, mention_boundaries.shape))
         #exit()
+        if tagme_mbs is None:
+          tagme_mbs = batch[7].detach().cpu().numpy()
+        else:
+          tagme_mbs = np.append(tagme_mbs, batch[7].detach().cpu().numpy())
         if args.use_external_mention_boundary:
           #inputs["mention_boundaries"] = mention_boundaries.to(args.device)
           inputs["mention_boundaries"] = batch[7]
           inputs["use_external_mention_boundary"] = True
+          
         
         if (args.get_external_mention_boundary or args.use_external_mention_boundary) and language in ["en", "de", "it"]:
           #tagme_file = os.path.join(pred_dir, "tagme_prediction_{}.json".format(language))
@@ -821,7 +829,7 @@ def load_and_cache_examples(args, tokenizer, split='train', output_examples=Fals
       return_dataset="pt",
       threads=args.threads,
       lang2id=lang2id,
-      threshold=args.threshold,
+      threshold=args.tagme_threshold,
       get_external_mention_boundary=(args.get_external_mention_boundary or args.use_external_mention_boundary),
     )
 

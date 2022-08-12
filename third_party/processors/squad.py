@@ -7,7 +7,6 @@ from multiprocessing import Pool, cpu_count
 
 import numpy as np
 from tqdm import tqdm
-from ..run_squad import get_external_mention_boundary
 
 from transformers.file_utils import is_tf_available, is_torch_available
 from transformers.tokenization_bert import whitespace_tokenize
@@ -250,7 +249,7 @@ def squad_convert_example_to_features(example, max_seq_length, doc_stride, max_q
     langs = [lid] * max_seq_length
 
     if get_external_mention_boundary and example.language in ["en", "de", "it"]:
-      _, mbs = get_external_mention_boundary(
+      mbs = tagme_mention_boundary(
                                 span["tokens"], 
                                 max_seq_length, 
                                 example.language,
@@ -280,7 +279,7 @@ def squad_convert_example_to_features(example, max_seq_length, doc_stride, max_q
     )
   return features
 
-def get_external_mention_boundary(tokens, max_seq_length=384, language="en", threshold=0.2): 
+def tagme_mention_boundary(tokens, max_seq_length=384, language="en", threshold=0.2): 
   tokenized_tokens = tokens
   #print ("tokens:\n", eval_feature.tokens)
   orig_tokens = []
@@ -303,10 +302,11 @@ def get_external_mention_boundary(tokens, max_seq_length=384, language="en", thr
   seq = " ".join(orig_tokens)
   mention_result = tagme.mentions(seq, lang=language)
   mention_preds = []
-  for mention in mention_result.mentions:
-    if mention.linkprob > threshold:
-      mention_preds.append(mention)
-      #print (mention)
+  if mention_result:
+    for mention in mention_result.mentions:
+      if mention.linkprob > threshold:
+        mention_preds.append(mention)
+        #print (mention)
   cur_start, cur_end = 0, 0
   mid = 0
   mb_label = [0] * len(tokenized_tokens)
