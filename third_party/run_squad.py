@@ -460,7 +460,7 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
   mention_bounds = None
   all_input_ids = None
   
-  """
+  tagme_mbs = None
   if args.get_external_mention_boundary or args.use_external_mention_boundary: 
     tagme_mbs = []
     dataset_file = args.valid_file if split=='dev' else args.predict_file.replace("<lc>", language)
@@ -472,10 +472,6 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
         for data in fi:
           tagme_data.append(data)
       #tagme_data = json.load(open(tagme_file, "r"))
-  else:
-    tagme_mbs = None
-  """
-  tagme_mbs = None
 
   for batch in tqdm(eval_dataloader, desc="Evaluating"):
     model.eval()
@@ -491,7 +487,7 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
       if args.output_entity_info:
         inputs["output_entity_info"] = True
       if (args.get_external_mention_boundary or args.use_external_mention_boundary) and language in ["en", "de", "it"]:
-        """
+        
         mention_boundaries, mbs = get_external_mention_boundary(
               features, 
               example_indices, 
@@ -501,27 +497,29 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
               tagme_data=tagme_data
             )
         tagme_mbs.extend(mbs)
-        """
+        
         #print ("input_ids:{}, mb:{}".format(batch[0].shape, mention_boundaries.shape))
         #exit()
+        """
         if tagme_mbs is None:
           tagme_mbs = batch[7].detach().cpu().numpy()
         else:
           tagme_mbs = np.append(tagme_mbs, batch[7].detach().cpu().numpy(), axis=0)
+        """
         if args.use_external_mention_boundary:
-          #inputs["mention_boundaries"] = mention_boundaries.to(args.device)
-          inputs["mention_boundaries"] = batch[7]
+          inputs["mention_boundaries"] = mention_boundaries.to(args.device)
+          #inputs["mention_boundaries"] = batch[7]
           inputs["use_external_mention_boundary"] = True
           
         
-      #  if (args.get_external_mention_boundary or args.use_external_mention_boundary) and language in ["en", "de", "it"]:
-          #tagme_file = os.path.join(pred_dir, "tagme_prediction_{}.json".format(language))
-          #if not os.path.exists(tagme_file):
-          #if tagme_data is None or len(tagme_data) <= example_indices[0].item():
-          #  logger.info("Writing TAGME predictions to: {}.".format(tagme_file))
-          #  with jsonlines.open(tagme_file, "a") as fo:
-          #    for data in mbs:
-          #      fo.write(data)
+        if (args.get_external_mention_boundary or args.use_external_mention_boundary) and language in ["en", "de", "it"]:
+          tagme_file = os.path.join(pred_dir, "tagme_prediction_{}.jsonl".format(language))
+          if not os.path.exists(tagme_file):
+            if tagme_data is None or len(tagme_data) <= example_indices[0].item():
+              logger.info("Writing TAGME predictions to: {}.".format(tagme_file))
+              with jsonlines.open(tagme_file, "a") as fo:
+                for data in mbs:
+                  fo.write(data)
 
       # XLNet and XLM use more arguments for their predictions
       if args.model_type in ["xlnet", "xlm"]:
@@ -829,8 +827,8 @@ def load_and_cache_examples(args, tokenizer, split='train', output_examples=Fals
       return_dataset="pt",
       threads=args.threads,
       lang2id=lang2id,
-      threshold=args.tagme_threshold,
-      get_external_mention_boundary=(args.get_external_mention_boundary or args.use_external_mention_boundary),
+      #threshold=args.tagme_threshold,
+      #get_external_mention_boundary=(args.get_external_mention_boundary or args.use_external_mention_boundary),
     )
 
     if args.local_rank in [-1, 0]:
