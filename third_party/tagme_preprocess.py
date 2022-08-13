@@ -102,11 +102,13 @@ def to_list(tensor):
 
 
 def get_external_mention_boundary(features, example_indices, max_seq_length=384, 
-                                  language="en", threshold=0.2, tagme_data=None): 
+                                  language="en", threshold=0.2, tagme_data=None, offset=-1): 
   mention_boundaries = []
   for i, example_index in enumerate(example_indices):
-    if tagme_data is not None and len(tagme_data) > example_index.item():
-      mb_label = tagme_data[example_index.item()]
+    if offset > 0:
+      cache_idx = example_index.item() - offset
+    if tagme_data is not None and len(tagme_data) > cache_idx:
+      mb_label = tagme_data[cache_idx]
     else:
       eval_feature = features[example_index.item()]
       #print ("input_ids:\n", batch[0][i])
@@ -167,7 +169,7 @@ def get_external_mention_boundary(features, example_indices, max_seq_length=384,
   mention_boundaries_ = torch.from_numpy(np.array(mention_boundaries)).long()
   return mention_boundaries_, mention_boundaries
 
-def evaluate(args, tokenizer, split='dev', prefix="", language='en', lang2id=None):
+def preprocess(args, tokenizer, split='dev', prefix="", language='en', lang2id=None):
   dataset, examples, features = load_and_cache_examples(args, tokenizer, split, output_examples=True,
                               language=language, lang2id=lang2id)
 
@@ -185,44 +187,55 @@ def evaluate(args, tokenizer, split='dev', prefix="", language='en', lang2id=Non
   logger.info("  Num examples = %d", len(dataset))
   logger.info("  Batch size = %d", args.eval_batch_size)
   
-  tagme_mbs = None
-  if args.get_external_mention_boundary or args.use_external_mention_boundary: 
-    tagme_mbs = []
-    dataset_file = args.valid_file if split=='dev' else args.predict_file.replace("<lc>", language)
+  tag_part = False
+  if args.begin > 0 and args.end > 0:
+    tag_part = True
+
+  #tagme_mbs = []
+  dataset_file = args.valid_file if split=='dev' else args.predict_file.replace("<lc>", language)
+  if tag_part:
+    tagme_file = dataset_file + ".tagme_prediction.maxseq_{}_{}-{}.jsonl".format(args.max_seq_length, args.begin, args.end)
+  else:
     tagme_file = dataset_file + ".tagme_prediction.maxseq_{}.jsonl".format(args.max_seq_length)
-    tagme_data = None
-    if os.path.exists(tagme_file):
-      tagme_data = []
-      with jsonlines.open(tagme_file, "r") as fi:
-        for data in fi:
-          tagme_data.append(data)
-      #tagme_data = json.load(open(tagme_file, "r"))
+  tagme_data = None
+  if os.path.exists(tagme_file):
+    tagme_data = []
+    with jsonlines.open(tagme_file, "r") as fi:
+      for data in fi:
+        tagme_data.append(data)
+    #tagme_data = json.load(open(tagme_file, "r"))
 
   for batch in tqdm(eval_dataloader, desc="Evaluating"):
-    batch = tuple(t.to(args.device) for t in batch)
+    #batch = tuple(t.to(args.device) for t in batch)
+    example_indices = batch[3]
+    # only start gettting mention when it reaches the start index
+    if tag_part and example_indices[-1].item() < args.start: continue
+    _, mbs = get_external_mention_boundary(
+          features, 
+          example_indices, 
+          max_seq_length=args.max_seq_length, 
+          language=language, 
+          threshold=args.tagme_threshold, 
+          tagme_data=tagme_data,
+          offset=args.start
+        )
+    #tagme_mbs.extend(mbs)
 
-    with torch.no_grad():
-
-      example_indices = batch[3]
-      if (args.get_external_mention_boundary or args.use_external_mention_boundary) and language in ["en", "de", "it"]:
-        
-        _, mbs = get_external_mention_boundary(
-              features, 
-              example_indices, 
-              max_seq_length=args.max_seq_length, 
-              language=language, 
-              threshold=args.tagme_threshold, 
-              tagme_data=tagme_data
-            )
-        tagme_mbs.extend(mbs)
-
-        if (args.get_external_mention_boundary or args.use_external_mention_boundary) and language in ["en", "de", "it"]:
-          if not os.path.exists(tagme_file):
-            if tagme_data is None or len(tagme_data) <= example_indices[0].item():
-              logger.info("Writing TAGME predictions to: {}.".format(tagme_file))
-              with jsonlines.open(tagme_file, "a") as fo:
-                for data in mbs:
-                  fo.write(data)
+    if not tag_part:
+      if tagme_data is None or len(tagme_data) <= example_indices[0].item():
+        logger.info("Writing TAGME predictions to: {}.".format(tagme_file))
+        with jsonlines.open(tagme_file, "a") as fo:
+          for data in mbs:
+            fo.write(data)
+    else:
+      offset = args.start
+      for i, example_index in enumerate(example_indices):
+        exp_id = example_index.item()
+        if exp_id < args.start: continue
+        if tagme_data is None or len(tagme_data) <= exp_id-offset:
+          logger.info("Writing TAGME predictions to: {}.".format(tagme_file))
+          with jsonlines.open(tagme_file, "a") as fo:
+            fo.write(mbs[i])
 
 
 def load_and_cache_examples(args, tokenizer, split='dev', output_examples=False,
@@ -533,6 +546,8 @@ def main():
   parser.add_argument("--use_external_mention_boundary", action="store_true",
             help="Use TAGME to predicted external mention boundary.")
   parser.add_argument("--tagme_threshold", default=0.2, type=float, help="Threshold for TAGME.")
+  parser.add_argument("--begin", type=int, default=-1, help="Beginning example index")
+  parser.add_argument("--end", type=int, default=-1, help="End example index")
 
             
   args = parser.parse_args()
@@ -606,7 +621,7 @@ def main():
     cache_dir=args.cache_dir if args.cache_dir else None,
   )
 
-  evaluate(args, tokenizer, split='dev', language=args.train_lang)
+  preprocess(args, tokenizer, split='dev', language=args.train_lang)
 
 
 if __name__ == "__main__":
