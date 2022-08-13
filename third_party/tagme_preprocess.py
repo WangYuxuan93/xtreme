@@ -173,8 +173,6 @@ def preprocess(args, tokenizer, split='dev', prefix="", language='en', lang2id=N
   dataset, examples, features = load_and_cache_examples(args, tokenizer, split, output_examples=True,
                               language=language, lang2id=lang2id)
 
-  if not os.path.exists(args.output_dir) and args.local_rank in [-1, 0]:
-    os.makedirs(args.output_dir)
 
   args.eval_batch_size = args.per_gpu_eval_batch_size * max(1, args.n_gpu)
 
@@ -352,14 +350,6 @@ def main():
     default=None,
     type=str,
     required=True,
-    help="Path to pre-trained model or shortcut name selected in the list: " + ", ".join(ALL_MODELS),
-  )
-  parser.add_argument(
-    "--output_dir",
-    default=None,
-    type=str,
-    required=True,
-    help="The output directory where the model checkpoints and predictions will be written.",
   )
 
   # Other parameters
@@ -554,18 +544,6 @@ def main():
 
   if args.model_type != "meae":
     args.output_entity_info = False
-
-  if (
-    os.path.exists(args.output_dir)
-    and os.listdir(args.output_dir)
-    and args.do_train
-    and not args.overwrite_output_dir
-  ):
-    raise ValueError(
-      "Output directory ({}) already exists and is not empty. Use --overwrite_output_dir to overcome.".format(
-        args.output_dir
-      )
-    )
 
   # Setup distant debugging if needed
   if args.server_ip and args.server_port:
