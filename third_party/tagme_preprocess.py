@@ -234,6 +234,7 @@ def preprocess(args, tokenizer, split='dev', prefix="", language='en', lang2id=N
       for i, example_index in enumerate(example_indices):
         exp_id = example_index.item()
         if exp_id < args.start: continue
+        if exp_id > args.end: break
         #if tagme_data is None or len(tagme_data) <= exp_id-offset:
         if tagme_data is None or exp_id not in tagme_data:
           with jsonlines.open(tagme_file, "a") as fo:
@@ -540,7 +541,7 @@ def main():
   parser.add_argument("--use_external_mention_boundary", action="store_true",
             help="Use TAGME to predicted external mention boundary.")
   parser.add_argument("--tagme_threshold", default=0.2, type=float, help="Threshold for TAGME.")
-  parser.add_argument("--begin", type=int, default=-1, help="Beginning example index")
+  parser.add_argument("--start", type=int, default=-1, help="Beginning example index")
   parser.add_argument("--end", type=int, default=-1, help="End example index")
 
             
