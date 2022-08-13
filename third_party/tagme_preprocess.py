@@ -182,18 +182,19 @@ def preprocess(args, tokenizer, split='dev', prefix="", language='en', lang2id=N
   eval_dataloader = DataLoader(dataset, sampler=eval_sampler, batch_size=args.eval_batch_size)
 
   # Eval!
-  logger.info("***** Running evaluation {} *****".format(prefix))
+  logger.info("***** Running preprocessing {} *****".format(prefix))
   logger.info("  Num examples = %d", len(dataset))
   logger.info("  Batch size = %d", args.eval_batch_size)
+  logger.info("  Start = {}, End = {}".format(args.start, args.end))
   
   tag_part = False
-  if args.begin > 0 and args.end > 0:
+  if args.start >= 0 and args.end >= 0:
     tag_part = True
 
   #tagme_mbs = []
   dataset_file = args.valid_file if split=='dev' else args.predict_file.replace("<lc>", language)
   if tag_part:
-    tagme_file = dataset_file + ".tagme_prediction.maxseq_{}_{}-{}.jsonl".format(args.max_seq_length, args.begin, args.end)
+    tagme_file = dataset_file + ".tagme_prediction.maxseq_{}_{}-{}.jsonl".format(args.max_seq_length, args.start, args.end)
   else:
     tagme_file = dataset_file + ".tagme_prediction.maxseq_{}.jsonl".format(args.max_seq_length)
   tagme_data = None
@@ -205,7 +206,7 @@ def preprocess(args, tokenizer, split='dev', prefix="", language='en', lang2id=N
         tagme_data[data["id"]] = data["mb"]
     #tagme_data = json.load(open(tagme_file, "r"))
 
-  for batch in tqdm(eval_dataloader, desc="Evaluating"):
+  for batch in tqdm(eval_dataloader, desc="Preprocessing"):
     #batch = tuple(t.to(args.device) for t in batch)
     example_indices = batch[3]
     # only start gettting mention when it reaches the start index
@@ -226,8 +227,8 @@ def preprocess(args, tokenizer, split='dev', prefix="", language='en', lang2id=N
       if tagme_data is None or len(tagme_data) <= example_indices[0].item():
         logger.info("Writing TAGME predictions to: {}.".format(tagme_file))
         with jsonlines.open(tagme_file, "a") as fo:
-          for data in mbs:
-            fo.write({"id":example_indices[0].item(), "mb":data})
+          for i, data in enumerate(mbs):
+            fo.write({"id":example_indices[i].item(), "mb":data})
     else:
       offset = args.start
       logger.info("Writing TAGME predictions to: {}.".format(tagme_file))
