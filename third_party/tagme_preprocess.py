@@ -208,6 +208,7 @@ def preprocess(args, tokenizer, split='dev', prefix="", language='en', lang2id=N
     example_indices = batch[3]
     # only start gettting mention when it reaches the start index
     if tag_part and example_indices[-1].item() < args.start: continue
+    if tag_part and example_indices[0].item() > args.end: break
     _, mbs = get_external_mention_boundary(
           features, 
           example_indices, 
@@ -227,11 +228,11 @@ def preprocess(args, tokenizer, split='dev', prefix="", language='en', lang2id=N
             fo.write(data)
     else:
       offset = args.start
+      logger.info("Writing TAGME predictions to: {}.".format(tagme_file))
       for i, example_index in enumerate(example_indices):
         exp_id = example_index.item()
         if exp_id < args.start: continue
         if tagme_data is None or len(tagme_data) <= exp_id-offset:
-          logger.info("Writing TAGME predictions to: {}.".format(tagme_file))
           with jsonlines.open(tagme_file, "a") as fo:
             fo.write(mbs[i])
 
