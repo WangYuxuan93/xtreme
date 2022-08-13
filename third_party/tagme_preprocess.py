@@ -105,10 +105,11 @@ def get_external_mention_boundary(features, example_indices, max_seq_length=384,
                                   language="en", threshold=0.2, tagme_data=None, offset=-1): 
   mention_boundaries = []
   for i, example_index in enumerate(example_indices):
-    if offset > 0:
-      cache_idx = example_index.item() - offset
-    if tagme_data is not None and len(tagme_data) > cache_idx:
-      mb_label = tagme_data[cache_idx]
+    #if offset > 0:
+    #  cache_idx = example_index.item() - offset
+    #if tagme_data is not None and len(tagme_data) > cache_idx:
+    if tagme_data is not None and example_index.item() in tagme_data:
+      mb_label = tagme_data[example_index.item()]
     else:
       eval_feature = features[example_index.item()]
       #print ("input_ids:\n", batch[0][i])
@@ -197,10 +198,11 @@ def preprocess(args, tokenizer, split='dev', prefix="", language='en', lang2id=N
     tagme_file = dataset_file + ".tagme_prediction.maxseq_{}.jsonl".format(args.max_seq_length)
   tagme_data = None
   if os.path.exists(tagme_file):
-    tagme_data = []
+    tagme_data = {}
     with jsonlines.open(tagme_file, "r") as fi:
       for data in fi:
-        tagme_data.append(data)
+        #tagme_data.append(data)
+        tagme_data[data["id"]] = data["mb"]
     #tagme_data = json.load(open(tagme_file, "r"))
 
   for batch in tqdm(eval_dataloader, desc="Evaluating"):
@@ -225,16 +227,17 @@ def preprocess(args, tokenizer, split='dev', prefix="", language='en', lang2id=N
         logger.info("Writing TAGME predictions to: {}.".format(tagme_file))
         with jsonlines.open(tagme_file, "a") as fo:
           for data in mbs:
-            fo.write(data)
+            fo.write({"id":example_indices[0].item(), "mb":data})
     else:
       offset = args.start
       logger.info("Writing TAGME predictions to: {}.".format(tagme_file))
       for i, example_index in enumerate(example_indices):
         exp_id = example_index.item()
         if exp_id < args.start: continue
-        if tagme_data is None or len(tagme_data) <= exp_id-offset:
+        #if tagme_data is None or len(tagme_data) <= exp_id-offset:
+        if tagme_data is None or exp_id not in tagme_data:
           with jsonlines.open(tagme_file, "a") as fo:
-            fo.write(mbs[i])
+            fo.write({"id":exp_id, "mb":mbs[i]})
 
 
 def load_and_cache_examples(args, tokenizer, split='dev', output_examples=False,
