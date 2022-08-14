@@ -220,10 +220,10 @@ def train(args, train_dataset, model, tokenizer):
     tagme_file = dataset_file + ".tagme_prediction.maxseq_{}.jsonl".format(args.max_seq_length)
     tagme_data = None
     if os.path.exists(tagme_file):
-      tagme_data = []
+      tagme_data = {}
       with jsonlines.open(tagme_file, "r") as fi:
         for data in fi:
-          tagme_data.append(data)
+          tagme_data[data["id"]] = data["mb"]
     else:
       logger.info("TAGME prediction file {} does not exist!".format(tagme_file))
       exit()
@@ -397,7 +397,7 @@ def get_external_mention_boundary(features, example_indices, max_seq_length=384,
                                   language="en", threshold=0.2, tagme_data=None): 
   mention_boundaries = []
   for i, example_index in enumerate(example_indices):
-    if tagme_data is not None and len(tagme_data) > example_index.item():
+    if tagme_data is not None and example_index.item() in tagme_data:
       mb_label = tagme_data[example_index.item()]
     else:
       eval_feature = features[example_index.item()]
@@ -494,11 +494,10 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
     tagme_file = dataset_file + ".tagme_prediction.maxseq_{}.jsonl".format(args.max_seq_length)
     tagme_data = None
     if os.path.exists(tagme_file):
-      tagme_data = []
+      tagme_data = {}
       with jsonlines.open(tagme_file, "r") as fi:
         for data in fi:
-          tagme_data.append(data)
-      #tagme_data = json.load(open(tagme_file, "r"))
+          tagme_data[data["id"]] = data["mb"]
 
   for batch in tqdm(eval_dataloader, desc="Evaluating"):
     model.eval()
@@ -540,12 +539,12 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
           
         
         if (args.get_external_mention_boundary or args.use_external_mention_boundary) and language in ["en", "de", "it"]:
-          if not os.path.exists(tagme_file):
-            if tagme_data is None or len(tagme_data) <= example_indices[0].item():
+          for i, example_index in enumerate(example_indices):
+            exp_id = example_index.item()
+            if tagme_data is None or exp_id not in tagme_data:
               logger.info("Writing TAGME predictions to: {}.".format(tagme_file))
               with jsonlines.open(tagme_file, "a") as fo:
-                for data in mbs:
-                  fo.write(data)
+                fo.write({"id":exp_id, "mb":mbs[i]})
 
       # XLNet and XLM use more arguments for their predictions
       if args.model_type in ["xlnet", "xlm"]:
@@ -629,13 +628,6 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
     output_null_log_odds_file = os.path.join(pred_dir, "null_odds_{}.json".format(prefix))
   else:
     output_null_log_odds_file = None
-
-  #if (args.get_external_mention_boundary or args.use_external_mention_boundary) and language in ["en", "de", "it"]:
-    #tagme_file = os.path.join(pred_dir, "tagme_prediction_{}.json".format(language))
-  #  if not os.path.exists(tagme_file):
-  #    logger.info("Writing TAGME predictions to: {}.".format(tagme_file))
-  #    with open(tagme_file, "w") as fo:
-  #      json.dump(tagme_mbs, fo)
 
   if args.output_entity_info:
     write_entity_info(args, tokenizer, all_input_ids, mention_preds, language, entity_positions, pred_dir,
