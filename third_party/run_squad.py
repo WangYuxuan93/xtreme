@@ -248,12 +248,12 @@ def train(args, train_dataset, model, tokenizer):
         "end_positions": batch[4],
       }
       example_indices = batch[8]
-      if (args.get_external_mention_boundary or args.use_external_mention_boundary) and language in ["en", "de", "it"]:
+      if (args.get_external_mention_boundary or args.use_external_mention_boundary) and args.train_lang in ["en", "de", "it"]:
         mention_boundaries, mbs = get_external_mention_boundary(
               None, 
               example_indices, 
               max_seq_length=args.max_seq_length, 
-              language=language, 
+              language=args.train_lang, 
               threshold=args.tagme_threshold, 
               tagme_data=tagme_data
             )
