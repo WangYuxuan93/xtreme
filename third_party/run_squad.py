@@ -488,7 +488,7 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
   all_input_ids = None
   
   tagme_mbs = None
-  if args.get_external_mention_boundary or args.use_external_mention_boundary: 
+  if (args.get_external_mention_boundary or args.use_external_mention_boundary) and language in ["en", "de", "it"]: 
     tagme_mbs = []
     dataset_file = args.valid_file if split=='dev' else args.predict_file.replace("<lc>", language)
     tagme_file = dataset_file + ".tagme_prediction.maxseq_{}.jsonl".format(args.max_seq_length)
