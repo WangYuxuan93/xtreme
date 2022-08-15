@@ -760,7 +760,7 @@ def write_entity_info(args, tokenizer, all_input_ids, mention_preds, lang, entit
       p = float(num_bio_corr) / num_mention_pred
       r = float(num_bio_corr) / num_gold_ner
       print ("Precision: {}, Recall: {}".format(p, r))
-      f.write("\n########BIO Head Prediction########\nTAGME Mentions: {}, Bio Total Pred: {}, Bio Pred Corr:{}\n".format(num_gold_ner, num_bio_pred, num_bio_corr))
+      f.write("\n########BIO Head Prediction########\nTAGME Mentions: {}, Bio Total Pred: {}, Mention Pred: {}, Bio Pred Corr:{}\n".format(num_gold_ner, num_bio_pred, num_mention_pred, num_bio_corr))
       f.write("Precision: {}, Recall: {}".format(p, r))
 
 
