@@ -58,11 +58,16 @@ class InputExample(object):
 class InputFeatures(object):
   """A single set of features of data."""
 
-  def __init__(self, input_ids, input_mask, segment_ids, label_ids, langs=None):
+  def __init__(self, input_ids, input_mask, segment_ids, entity_start_positions, entity_end_positions, label_ids, original_entity_spans, input_words, doc_id, langs=None):
     self.input_ids = input_ids
     self.input_mask = input_mask
     self.segment_ids = segment_ids
+    self.entity_start_positions = entity_start_positions
+    self.entity_end_positions = entity_end_positions
     self.label_ids = label_ids
+    self.original_entity_spans = original_entity_spans
+    self.input_words = input_words
+    self.doc_id = doc_id
     self.langs = langs
 
 def read_examples_from_file(file_path, lang, lang2id=None):
@@ -147,6 +152,8 @@ def convert_examples_to_features(examples,
 
   label_map = {label: i for i, label in enumerate(label_list)}
   max_num_subwords = max_seq_length - 2
+  if sep_token_extra:
+    max_num_subwords -= 1
 
   features = []
   for (ex_index, example) in enumerate(examples):
@@ -183,7 +190,11 @@ def convert_examples_to_features(examples,
     for n in range(len(subword_sentence_boundaries) - 1):
       # process (sub) words
       doc_sent_start, doc_sent_end = subword_sentence_boundaries[n : n + 2]
-      assert doc_sent_end - doc_sent_start < max_num_subwords
+      try:
+        assert doc_sent_end - doc_sent_start <= max_num_subwords
+      except:
+        print ("doc_end={}, doc_start={}, end-start={}, max_subwords={}".format(doc_sent_end, doc_sent_start, doc_sent_end-doc_sent_start, max_num_subwords))
+        exit()
 
       left_length = doc_sent_start
       right_length = len(subwords) - doc_sent_end
@@ -229,6 +240,7 @@ def convert_examples_to_features(examples,
         print('example.langs', example.langs, example.words, len(example.langs))
         print('ex_index', ex_index, len(examples))
         langs = None
+
 
       assert len(input_ids) == max_seq_length
       assert len(input_mask) == max_seq_length
@@ -276,7 +288,7 @@ def convert_examples_to_features(examples,
         start = i * entity_size
         end = start + entity_size
 
-        if ex_index < 5:
+        if ex_index < 1:
           logger.info("*** Example ***")
           logger.info("guid(doc_id): %s", example.guid)
           logger.info("tokens: %s", " ".join([str(x) for x in tokens]))

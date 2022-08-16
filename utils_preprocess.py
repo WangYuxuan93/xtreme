@@ -40,6 +40,7 @@ def panx_tokenize_preprocess(args):
       print(f'{infile} not exists')
       return 0
     special_tokens_count = 3 if isinstance(tokenizer, XLMRobertaTokenizer) else 2
+    print ("special_tokens_count={}".format(special_tokens_count))
     max_seq_len = max_len - special_tokens_count
     subword_len_counter = idx = 0
     after_blank = False
