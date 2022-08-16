@@ -288,6 +288,20 @@ def convert_examples_to_features(examples,
         start = i * entity_size
         end = start + entity_size
 
+        # padding
+        entity_pad_token = -1
+        _entity_start_positions = entity_start_positions[start:end]
+        _entity_end_positions = entity_end_positions[start:end]
+        _label_ids = label_ids[start:end]
+        _original_entity_spans = original_entity_spans[start:end]
+        assert len(_entity_start_positions) == len(_entity_end_positions)
+        assert len(_entity_start_positions) == len(_label_ids)
+        padding_length = max_entity_length - len(_label_ids)
+        padded_entity_start_positions = _entity_start_positions + ([entity_pad_token] * padding_length)
+        padded_entity_end_positions = _entity_end_positions + ([entity_pad_token] * padding_length)
+        padded_label_ids = _label_ids + ([entity_pad_token] * padding_length)
+        padded_original_entity_spans = _original_entity_spans + ((-1,-1) * padding_length)
+
         if ex_index < 1:
           logger.info("*** Example ***")
           logger.info("guid(doc_id): %s", example.guid)
@@ -296,34 +310,27 @@ def convert_examples_to_features(examples,
           logger.info("input_mask: %s", " ".join([str(x) for x in input_mask]))
           logger.info("segment_ids: %s", " ".join([str(x) for x in segment_ids]))
           logger.info("langs: {}".format(langs))
-          logger.info("entity_start_positions: %s", " ".join([str(x) for x in entity_start_positions[start:end]]))
-          logger.info("entity_end_positions: %s", " ".join([str(x) for x in entity_end_positions[start:end]]))
-          logger.info("label_ids: %s", " ".join([str(x) for x in label_ids[start:end]]))
-          logger.info("original_entity_spans: %s", " ".join([str(x) for x in original_entity_spans[start:end]]))
+          #logger.info("entity_start_positions: %s", " ".join([str(x) for x in entity_start_positions[start:end]]))
+          #logger.info("entity_end_positions: %s", " ".join([str(x) for x in entity_end_positions[start:end]]))
+          #logger.info("label_ids: %s", " ".join([str(x) for x in label_ids[start:end]]))
+          #logger.info("original_entity_spans: %s", " ".join([str(x) for x in original_entity_spans[start:end]]))
+          logger.info("entity_start_positions: %s", " ".join([str(x) for x in padded_entity_start_positions]))
+          logger.info("entity_end_positions: %s", " ".join([str(x) for x in padded_entity_end_positions]))
+          logger.info("label_ids: %s", " ".join([str(x) for x in padded_label_ids]))
+          logger.info("original_entity_spans: %s", " ".join([str(x) for x in padded_original_entity_spans]))
           logger.info("input_words: %s", " ".join([str(x) for x in example.words]))
 
         features.append(
             InputFeatures(input_ids=input_ids,
                     input_mask=input_mask,
                     segment_ids=segment_ids,
-                    entity_start_positions=entity_start_positions[start:end],
-                    entity_end_positions=entity_end_positions[start:end],
-                    label_ids=label_ids[start:end],
-                    original_entity_spans=original_entity_spans[start:end],
+                    entity_start_positions=padded_entity_start_positions,
+                    entity_end_positions=padded_entity_end_positions,
+                    label_ids=padded_label_ids,
+                    original_entity_spans=padded_original_entity_spans,
                     input_words=example.words,
                     doc_id=example.guid,
                     langs=langs))
-        """
-        fields = {
-                "word_ids": TextField(word_ids, token_indexers=self.token_indexers),
-                "entity_start_positions": TensorField(np.array(entity_start_positions[start:end])),
-                "entity_end_positions": TensorField(np.array(entity_end_positions[start:end])),
-                "original_entity_spans": TensorField(np.array(original_entity_spans[start:end]), padding_value=-1),
-                "labels": ListField([LabelField(l) for l in labels[start:end]]),
-                "doc_id": MetadataField(doc_index),
-                "input_words": MetadataField(words),
-            }
-        """
 
   return features
 
