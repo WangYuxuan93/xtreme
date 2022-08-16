@@ -318,7 +318,7 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
         # XLM and RoBERTa don"t use segment_ids
         inputs["token_type_ids"] = batch[2] if args.model_type in ["bert", "xlnet"] else None
       if args.model_type == 'xlm':
-        inputs["langs"] = batch[4]
+        inputs["langs"] = batch[6]
       if args.output_entity_info:
         inputs["output_entity_info"] = True
       outputs = model(**inputs)
@@ -496,12 +496,16 @@ def load_and_cache_examples(args, tokenizer, labels, pad_token_label_id, mode, l
   all_input_mask = torch.tensor([f.input_mask for f in features], dtype=torch.long)
   all_segment_ids = torch.tensor([f.segment_ids for f in features], dtype=torch.long)
   all_label_ids = torch.tensor([f.label_ids for f in features], dtype=torch.long)
+  all_entity_start_positions = torch.tensor([f.entity_start_positions for f in features], dtype=torch.long)
+  all_entity_end_positions = torch.tensor([f.entity_end_positions for f in features], dtype=torch.long)
   if args.model_type == 'xlm' and features[0].langs is not None:
     all_langs = torch.tensor([f.langs for f in features], dtype=torch.long)
     logger.info('all_langs[0] = {}'.format(all_langs[0]))
-    dataset = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids, all_langs)
+    dataset = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids, 
+                            all_entity_start_positions, all_entity_end_positions, all_langs)
   else:
-    dataset = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids)
+    dataset = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids, 
+                            all_entity_start_positions, all_entity_end_positions)
   return dataset
 
 

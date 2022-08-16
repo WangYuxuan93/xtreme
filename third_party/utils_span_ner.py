@@ -300,7 +300,7 @@ def convert_examples_to_features(examples,
         padded_entity_start_positions = _entity_start_positions + ([entity_pad_token] * padding_length)
         padded_entity_end_positions = _entity_end_positions + ([entity_pad_token] * padding_length)
         padded_label_ids = _label_ids + ([entity_pad_token] * padding_length)
-        padded_original_entity_spans = _original_entity_spans + ((-1,-1) * padding_length)
+        padded_original_entity_spans = _original_entity_spans + ([(-1,-1)] * padding_length)
 
         if ex_index < 1:
           logger.info("*** Example ***")
