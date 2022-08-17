@@ -37,6 +37,7 @@ from tqdm import tqdm, trange
 from utils_span_ner import convert_examples_to_features
 from utils_span_ner import read_examples_from_file
 from utils_tag import get_labels
+from span_ner_metrics import SpanToLabelF1
 
 from transformers import (
   AdamW,
@@ -49,7 +50,7 @@ from transformers import (
   XLMTokenizer,
   XLMRobertaConfig,
   XLMRobertaTokenizer,
-  XLMRobertaForTokenClassification,
+  XLMRobertaForEntitySpanClassification,
   MEAEConfig,
   MEAEForTokenClassification,
 )
@@ -67,10 +68,9 @@ ALL_MODELS = sum(
 MODEL_CLASSES = {
   "bert": (BertConfig, BertForTokenClassification, BertTokenizer),
   "xlm": (XLMConfig, XLMForTokenClassification, XLMTokenizer),
-  "xlmr": (XLMRobertaConfig, XLMRobertaForTokenClassification, XLMRobertaTokenizer),
+  "xlmr": (XLMRobertaConfig, XLMRobertaForEntitySpanClassification, XLMRobertaTokenizer),
   "meae": (MEAEConfig, MEAEForTokenClassification, XLMRobertaTokenizer),
 }
-
 
 def set_seed(args):
   random.seed(args.seed)
@@ -159,7 +159,10 @@ def train(args, train_dataset, model, tokenizer, labels, pad_token_label_id, lan
       batch = tuple(t.to(args.device) for t in batch if t is not None)
       inputs = {"input_ids": batch[0],
             "attention_mask": batch[1],
-            "labels": batch[3]}
+            "labels": batch[3],
+            "entity_start_positions": batch[4],
+            "entity_end_positions": batch[5],
+            }
 
       if args.model_type != "distilbert":
         # XLM and RoBERTa don"t use segment_ids
@@ -284,7 +287,7 @@ def train(args, train_dataset, model, tokenizer, labels, pad_token_label_id, lan
 
 
 def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix="", lang="en", lang2id=None, print_result=True):
-  eval_dataset = load_and_cache_examples(args, tokenizer, labels, pad_token_label_id, mode=mode, lang=lang, lang2id=lang2id)
+  eval_dataset, features = load_and_cache_examples(args, tokenizer, labels, pad_token_label_id, mode=mode, lang=lang, lang2id=lang2id)
 
   args.eval_batch_size = args.per_gpu_eval_batch_size * max(1, args.n_gpu)
   # Note that DistributedSampler samples randomly
@@ -307,22 +310,43 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
   mention_bounds = None
   all_input_ids = None
   model.eval()
+  label_map = {i: label for i, label in enumerate(labels)}
+  span_ner_merics = SpanToLabelF1(label_map)
+  features = features[lang]
   for batch in tqdm(eval_dataloader, desc="Evaluating"):
     batch = tuple(t.to(args.device) for t in batch)
 
     with torch.no_grad():
       inputs = {"input_ids": batch[0],
             "attention_mask": batch[1],
-            "labels": batch[3]}
+            "labels": batch[3],
+            "entity_start_positions": batch[4],
+            "entity_end_positions": batch[5],
+            }
+      example_indices = batch[6]
       if args.model_type != "distilbert":
         # XLM and RoBERTa don"t use segment_ids
         inputs["token_type_ids"] = batch[2] if args.model_type in ["bert", "xlnet"] else None
       if args.model_type == 'xlm':
-        inputs["langs"] = batch[6]
+        inputs["langs"] = batch[7]
       if args.output_entity_info:
         inputs["output_entity_info"] = True
       outputs = model(**inputs)
       tmp_eval_loss, logits = outputs[:2]
+
+      # get data for metrics
+      prediction_logits, prediction = logits.max(dim=-1)
+      original_entity_spans = [features[i.item()].original_entity_spans for i in example_indices]
+      doc_id = [features[i.item()].doc_id for i in example_indices]
+      input_words = [features[i.item()].input_words for i in example_indices]
+      span_ner_merics(
+        prediction.detach().cpu().numpy(), 
+        inputs["labels"].detach().cpu().numpy(),
+        prediction_logits.detach().cpu().numpy(), 
+        original_entity_spans, 
+        doc_id, 
+        input_words
+      )
 
       if args.n_gpu > 1:
         # mean() to average on multi-gpu parallel evaluating
@@ -369,8 +393,6 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
     eval_loss = eval_loss / nb_eval_steps
     preds = np.argmax(preds, axis=2)
 
-    label_map = {i: label for i, label in enumerate(labels)}
-
     out_label_list = [[] for _ in range(out_label_ids.shape[0])]
     preds_list = [[] for _ in range(out_label_ids.shape[0])]
 
@@ -380,12 +402,15 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
           out_label_list[i].append(label_map[out_label_ids[i][j]])
           preds_list[i].append(label_map[preds[i][j]])
 
-    results = {
-      "loss": eval_loss,
-      "precision": precision_score(out_label_list, preds_list),
-      "recall": recall_score(out_label_list, preds_list),
-      "f1": f1_score(out_label_list, preds_list)
-    }
+    #results = {
+    #  "loss": eval_loss,
+    #  "precision": precision_score(out_label_list, preds_list),
+    #  "recall": recall_score(out_label_list, preds_list),
+    #  "f1": f1_score(out_label_list, preds_list)
+    #}
+    results = span_ner_merics.get_metric()
+    results["loss"] = eval_loss
+
   if args.output_entity_info:
     write_entity_info(args, tokenizer, all_input_ids, out_label_ids, label_map, preds, mention_preds, lang, entity_positions)
   if print_result:
@@ -498,15 +523,17 @@ def load_and_cache_examples(args, tokenizer, labels, pad_token_label_id, mode, l
   all_label_ids = torch.tensor([f.label_ids for f in features], dtype=torch.long)
   all_entity_start_positions = torch.tensor([f.entity_start_positions for f in features], dtype=torch.long)
   all_entity_end_positions = torch.tensor([f.entity_end_positions for f in features], dtype=torch.long)
+  all_example_index = torch.arange(all_input_ids.size(0), dtype=torch.long)
   if args.model_type == 'xlm' and features[0].langs is not None:
     all_langs = torch.tensor([f.langs for f in features], dtype=torch.long)
     logger.info('all_langs[0] = {}'.format(all_langs[0]))
     dataset = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids, 
-                            all_entity_start_positions, all_entity_end_positions, all_langs)
+                            all_entity_start_positions, all_entity_end_positions, all_example_index,
+                            all_langs)
   else:
     dataset = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids, 
-                            all_entity_start_positions, all_entity_end_positions)
-  return dataset
+                            all_entity_start_positions, all_entity_end_positions, all_example_index)
+  return dataset, features
 
 
 def main():
@@ -702,7 +729,7 @@ def main():
 
   # Training
   if args.do_train:
-    train_dataset = load_and_cache_examples(args, tokenizer, labels, pad_token_label_id, mode="train", lang=args.train_langs, lang2id=lang2id, few_shot=args.few_shot)
+    train_dataset, _ = load_and_cache_examples(args, tokenizer, labels, pad_token_label_id, mode="train", lang=args.train_langs, lang2id=lang2id, few_shot=args.few_shot)
     global_step, tr_loss = train(args, train_dataset, model, tokenizer, labels, pad_token_label_id, lang2id)
     logger.info(" global_step = %s, average loss = %s", global_step, tr_loss)
 
