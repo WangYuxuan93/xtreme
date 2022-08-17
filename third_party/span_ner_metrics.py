@@ -43,9 +43,9 @@ class SpanToLabelF1:
       pred = pred.tolist()
       gold = gold.tolist()
       scores = scores.tolist()
-      spans = spans.tolist()
+      #spans = spans.tolist()
       for p, g, score, span in zip(pred, gold, scores, spans):
-        if g == -1:
+        if g == -100:
           continue
         #p = self.vocab.get_token_from_index(p, namespace=self.label_namespace)
         #g = self.vocab.get_token_from_index(g, namespace=self.label_namespace)
@@ -96,4 +96,4 @@ class SpanToLabelF1:
       label_sequence[start:end] = ["I-" + label] * (end - start)
       label_sequence[start] = "B-" + label
 
-    return 
+    return label_sequence

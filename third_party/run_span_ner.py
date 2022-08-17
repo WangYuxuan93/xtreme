@@ -312,7 +312,6 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
   model.eval()
   label_map = {i: label for i, label in enumerate(labels)}
   span_ner_merics = SpanToLabelF1(label_map)
-  features = features[lang]
   for batch in tqdm(eval_dataloader, desc="Evaluating"):
     batch = tuple(t.to(args.device) for t in batch)
 
