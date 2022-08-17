@@ -297,8 +297,8 @@ def convert_examples_to_features(examples,
         assert len(_entity_start_positions) == len(_entity_end_positions)
         assert len(_entity_start_positions) == len(_label_ids)
         padding_length = max_entity_length - len(_label_ids)
-        padded_entity_start_positions = _entity_start_positions + ([entity_pad_token] * padding_length)
-        padded_entity_end_positions = _entity_end_positions + ([entity_pad_token] * padding_length)
+        padded_entity_start_positions = _entity_start_positions + ([0] * padding_length)
+        padded_entity_end_positions = _entity_end_positions + ([0] * padding_length)
         padded_label_ids = _label_ids + ([entity_pad_token] * padding_length)
         padded_original_entity_spans = _original_entity_spans + ([(-100,-100)] * padding_length)
 
