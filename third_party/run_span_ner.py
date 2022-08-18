@@ -52,7 +52,7 @@ from transformers import (
   XLMRobertaTokenizer,
   XLMRobertaForEntitySpanClassification,
   MEAEConfig,
-  MEAEForTokenClassification,
+  MEAEForEntitySpanClassification,
 )
 from xlm import XLMForTokenClassification
 
@@ -69,7 +69,7 @@ MODEL_CLASSES = {
   "bert": (BertConfig, BertForTokenClassification, BertTokenizer),
   "xlm": (XLMConfig, XLMForTokenClassification, XLMTokenizer),
   "xlmr": (XLMRobertaConfig, XLMRobertaForEntitySpanClassification, XLMRobertaTokenizer),
-  "meae": (MEAEConfig, MEAEForTokenClassification, XLMRobertaTokenizer),
+  "meae": (MEAEConfig, MEAEForEntitySpanClassification, XLMRobertaTokenizer),
 }
 
 def set_seed(args):
