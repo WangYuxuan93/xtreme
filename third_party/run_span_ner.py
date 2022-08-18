@@ -311,9 +311,10 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
   all_input_ids = None
   model.eval()
   label_map = {i: label for i, label in enumerate(labels)}
+  output_predictions_file = None
   if mode == "test":
-    output_test_predictions_file = os.path.join(args.output_dir, "test_{}_predictions.txt".format(lang))
-  span_ner_merics = SpanToLabelF1(label_map, prediction_save_path=output_test_predictions_file)
+    output_predictions_file = os.path.join(args.output_dir, "test_{}_predictions.txt".format(lang))
+  span_ner_merics = SpanToLabelF1(label_map, prediction_save_path=output_predictions_file)
   for batch in tqdm(eval_dataloader, desc="Evaluating"):
     batch = tuple(t.to(args.device) for t in batch)
 
@@ -812,7 +813,7 @@ def main():
         output_test_predictions_file = os.path.join(args.output_dir, "test_{}_predictions.txt".format(lang))
         infile = os.path.join(args.data_dir, lang, "test.{}".format(list(filter(None, args.model_name_or_path.split("/"))).pop()))
         idxfile = infile + '.idx'
-        save_predictions(args, predictions, output_test_predictions_file, infile, idxfile, output_word_prediction=True)
+        #save_predictions(args, predictions, output_test_predictions_file, infile, idxfile, output_word_prediction=True)
 
   # Predict dev set
   if args.do_predict_dev and args.local_rank in [-1, 0]:
@@ -837,7 +838,7 @@ def main():
         output_test_predictions_file = os.path.join(args.output_dir, "dev_{}_predictions.txt".format(lang))
         infile = os.path.join(args.data_dir, lang, "dev.{}".format(list(filter(None, args.model_name_or_path.split("/"))).pop()))
         idxfile = infile + '.idx'
-        save_predictions(args, predictions, output_test_predictions_file, infile, idxfile)
+        #save_predictions(args, predictions, output_test_predictions_file, infile, idxfile)
 
 def save_predictions(args, predictions, output_file, text_file, idx_file, output_word_prediction=False):
   # Save predictions
