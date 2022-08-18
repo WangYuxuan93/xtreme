@@ -287,7 +287,10 @@ def train(args, train_dataset, model, tokenizer, labels, pad_token_label_id, lan
 
 
 def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix="", lang="en", lang2id=None, print_result=True):
-  eval_dataset, features = load_and_cache_examples(args, tokenizer, labels, pad_token_label_id, mode=mode, lang=lang, lang2id=lang2id)
+  eval_dataset, features, examples_dict = load_and_cache_examples(args, tokenizer, labels, pad_token_label_id, 
+                                                    mode=mode, lang=lang, lang2id=lang2id,
+                                                    output_examples=True)
+  examples = examples_dict[lang]
 
   args.eval_batch_size = args.per_gpu_eval_batch_size * max(1, args.n_gpu)
   # Note that DistributedSampler samples randomly
@@ -314,7 +317,11 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
   output_predictions_file = None
   if mode == "test":
     output_predictions_file = os.path.join(args.output_dir, "test_{}_predictions.txt".format(lang))
-  span_ner_merics = SpanToLabelF1(label_map, prediction_save_path=output_predictions_file)
+  span_ner_merics = SpanToLabelF1(
+                        label_map, 
+                        prediction_save_path=output_predictions_file, 
+                        output_mode="txt"
+                      )
   for batch in tqdm(eval_dataloader, desc="Evaluating"):
     batch = tuple(t.to(args.device) for t in batch)
 
@@ -341,13 +348,15 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
       original_entity_spans = [features[i.item()].original_entity_spans for i in example_indices]
       doc_id = [features[i.item()].doc_id for i in example_indices]
       input_words = [features[i.item()].input_words for i in example_indices]
+      sentence_boundaries = [examples[i.item()].sentence_boundaries for i in example_indices]
       span_ner_merics(
         prediction.detach().cpu().numpy(), 
         inputs["labels"].detach().cpu().numpy(),
         prediction_logits.detach().cpu().numpy(), 
         original_entity_spans, 
         doc_id, 
-        input_words
+        input_words,
+        sentence_boundaries,
       )
 
       if args.n_gpu > 1:
@@ -468,7 +477,8 @@ def write_entity_info(args, tokenizer, all_input_ids, out_label_ids, label_map, 
     f.write("\n########BIO Head Prediction########\nGold NER: {}, Bio Total Pred: {}, Bio Pred Corr:{}\n".format(num_gold_ner, num_bio_pred, num_bio_corr))
     f.write("Precision: {}, Recall: {}".format(p, r))
 
-def load_and_cache_examples(args, tokenizer, labels, pad_token_label_id, mode, lang, lang2id=None, few_shot=-1):
+def load_and_cache_examples(args, tokenizer, labels, pad_token_label_id, mode, lang, lang2id=None, 
+                            few_shot=-1, output_examples=False):
   # Make sure only the first process in distributed training process
   # the dataset, and the others will use the cache
   if args.local_rank not in [-1, 0] and not evaluate:
@@ -481,14 +491,21 @@ def load_and_cache_examples(args, tokenizer, labels, pad_token_label_id, mode, l
   if os.path.exists(cached_features_file) and not args.overwrite_cache:
     logger.info("Loading features from cached file %s", cached_features_file)
     features = torch.load(cached_features_file)
+    langs = lang.split(',')
+    examples_dict = {}
+    for lg in langs:
+      examples = read_examples_from_file(data_file, lg, lang2id)
+      examples_dict[lg] = examples
   else:
     langs = lang.split(',')
     logger.info("all languages = {}".format(lang))
     features = []
+    examples_dict = {}
     for lg in langs:
       data_file = os.path.join(args.data_dir, lg, "{}.{}".format(mode, list(filter(None, args.model_name_or_path.split("/"))).pop()))
       logger.info("Creating features from dataset file at {} in language {}".format(data_file, lg))
       examples = read_examples_from_file(data_file, lg, lang2id)
+      examples_dict[lg] = examples
       features_lg = convert_examples_to_features(examples, labels, args.max_seq_length, tokenizer,
                           cls_token_at_end=bool(args.model_type in ["xlnet"]),
                           cls_token=tokenizer.cls_token,
@@ -535,7 +552,10 @@ def load_and_cache_examples(args, tokenizer, labels, pad_token_label_id, mode, l
   else:
     dataset = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids, 
                             all_entity_start_positions, all_entity_end_positions, all_example_index)
-  return dataset, features
+  if output_examples:
+    return dataset, features, examples_dict
+  else:
+    return dataset, features
 
 
 def main():

@@ -8,13 +8,15 @@ from seqeval.scheme import IOB2
 
 
 class SpanToLabelF1:
-  def __init__(self, label_map, prediction_save_path: str = None):
+  def __init__(self, label_map, prediction_save_path: str = None, output_mode="json"):
     self.label_map = label_map
 
     self.prediction = defaultdict(list)
     self.gold_labels = defaultdict(list)
-    self.doc_id_to_words: Dict[str, List[str]] = {}
+    self.doc_id_to_words = {}
+    self.doc_id_to_sentence_boundaries = {}
     self.prediction_save_path = prediction_save_path
+    self.output_mode = output_mode
 
   def __call__(
     self,
@@ -24,6 +26,7 @@ class SpanToLabelF1:
     original_entity_spans,
     doc_id,
     input_words = None,
+    sentence_boundaries = None,
   ):
 
     if self.prediction_save_path is not None and input_words is None:
@@ -36,6 +39,10 @@ class SpanToLabelF1:
     if input_words is not None:
       for id_, words in zip(doc_id, input_words):
         self.doc_id_to_words[id_] = words
+    
+    if sentence_boundaries is not None:
+      for id_, boundaries in zip(doc_id, sentence_boundaries):
+        self.doc_id_to_sentence_boundaries[id_] = boundaries
 
     for pred, gold, scores, spans, id_ in zip(
       prediction, gold_labels, prediction_scores, original_entity_spans, doc_id
@@ -58,6 +65,22 @@ class SpanToLabelF1:
   def reset(self):
     self.prediction = defaultdict(list)
     self.gold_labels = defaultdict(list)
+  
+  def write_txt(self, results, f):
+    for doc_id in self.gold_labels.keys():
+      prediction = self.span_to_label_sequence(self.prediction[doc_id])
+      gold = self.span_to_label_sequence(self.gold_labels[doc_id])
+      results.append({"words": self.doc_id_to_words[doc_id], "gold": gold, "prediction": prediction})
+      sentence_boundaries = self.doc_id_to_sentence_boundaries[doc_id]
+      words = self.doc_id_to_words[doc_id]
+      for n in range(len(sentence_boundaries)-1):
+        sent_start, sent_end = sentence_boundaries[n : n + 2]
+        sent_words = words[sent_start:sent_end]
+        sent_gold = gold[sent_start:sent_end]
+        sent_pred = prediction[sent_start:sent_end]
+        for w, g, p in zip(sent_words, sent_gold, sent_pred):
+          f.write("\t".join([w, g, p])+"\n")
+        f.write("\n")
 
   def get_metric(self):
     all_prediction_sequence = []
@@ -72,7 +95,12 @@ class SpanToLabelF1:
 
     if self.prediction_save_path is not None:
       with open(self.prediction_save_path, "w") as f:
-        json.dump(results, f)
+        if self.output_mode == "json":
+          json.dump(results, f)
+        elif self.output_mode == "txt":
+          self.write_txt(results, f)
+        else:
+          print ("Output_mode {} not recognized!".format(self.output_mode))
 
     return {
       "f1": f1_score(all_gold_sequence, all_prediction_sequence, scheme=IOB2),
