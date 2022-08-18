@@ -291,6 +291,7 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
                                                     mode=mode, lang=lang, lang2id=lang2id,
                                                     output_examples=True)
   examples = examples_dict[lang]
+  doc_id_to_sentence_boundaries = {examples[i].guid: examples[i].sentence_boundaries for i in range(len(examples))}
 
   args.eval_batch_size = args.per_gpu_eval_batch_size * max(1, args.n_gpu)
   # Note that DistributedSampler samples randomly
@@ -320,7 +321,8 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
   span_ner_merics = SpanToLabelF1(
                         label_map, 
                         prediction_save_path=output_predictions_file, 
-                        output_mode="txt"
+                        output_mode="txt",
+                        doc_id_to_sentence_boundaries=doc_id_to_sentence_boundaries,
                       )
   for batch in tqdm(eval_dataloader, desc="Evaluating"):
     batch = tuple(t.to(args.device) for t in batch)
@@ -348,7 +350,6 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
       original_entity_spans = [features[i.item()].original_entity_spans for i in example_indices]
       doc_id = [features[i.item()].doc_id for i in example_indices]
       input_words = [features[i.item()].input_words for i in example_indices]
-      sentence_boundaries = [examples[i.item()].sentence_boundaries for i in example_indices]
       span_ner_merics(
         prediction.detach().cpu().numpy(), 
         inputs["labels"].detach().cpu().numpy(),
@@ -356,7 +357,6 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
         original_entity_spans, 
         doc_id, 
         input_words,
-        sentence_boundaries,
       )
 
       if args.n_gpu > 1:
@@ -494,6 +494,7 @@ def load_and_cache_examples(args, tokenizer, labels, pad_token_label_id, mode, l
     langs = lang.split(',')
     examples_dict = {}
     for lg in langs:
+      data_file = os.path.join(args.data_dir, lg, "{}.{}".format(mode, list(filter(None, args.model_name_or_path.split("/"))).pop()))
       examples = read_examples_from_file(data_file, lg, lang2id)
       examples_dict[lg] = examples
   else:

@@ -8,7 +8,13 @@ from seqeval.scheme import IOB2
 
 
 class SpanToLabelF1:
-  def __init__(self, label_map, prediction_save_path: str = None, output_mode="json"):
+  def __init__(
+        self, 
+        label_map, 
+        prediction_save_path: str = None, 
+        output_mode="json",
+        doc_id_to_sentence_boundaries = None
+    ):
     self.label_map = label_map
 
     self.prediction = defaultdict(list)
@@ -17,6 +23,7 @@ class SpanToLabelF1:
     self.doc_id_to_sentence_boundaries = {}
     self.prediction_save_path = prediction_save_path
     self.output_mode = output_mode
+    self.doc_id_to_sentence_boundaries = doc_id_to_sentence_boundaries
 
   def __call__(
     self,
@@ -26,7 +33,6 @@ class SpanToLabelF1:
     original_entity_spans,
     doc_id,
     input_words = None,
-    sentence_boundaries = None,
   ):
 
     if self.prediction_save_path is not None and input_words is None:
@@ -39,10 +45,6 @@ class SpanToLabelF1:
     if input_words is not None:
       for id_, words in zip(doc_id, input_words):
         self.doc_id_to_words[id_] = words
-    
-    if sentence_boundaries is not None:
-      for id_, boundaries in zip(doc_id, sentence_boundaries):
-        self.doc_id_to_sentence_boundaries[id_] = boundaries
 
     for pred, gold, scores, spans, id_ in zip(
       prediction, gold_labels, prediction_scores, original_entity_spans, doc_id
@@ -98,6 +100,9 @@ class SpanToLabelF1:
         if self.output_mode == "json":
           json.dump(results, f)
         elif self.output_mode == "txt":
+          if self.doc_id_to_sentence_boundaries is None:
+            print ("doc_id_to_sentence_boundaries is not provided!")
+            exit()
           self.write_txt(results, f)
         else:
           print ("Output_mode {} not recognized!".format(self.output_mode))
