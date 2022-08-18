@@ -311,7 +311,9 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
   all_input_ids = None
   model.eval()
   label_map = {i: label for i, label in enumerate(labels)}
-  span_ner_merics = SpanToLabelF1(label_map)
+  if mode == "test":
+    output_test_predictions_file = os.path.join(args.output_dir, "test_{}_predictions.txt".format(lang))
+  span_ner_merics = SpanToLabelF1(label_map, prediction_save_path=output_test_predictions_file)
   for batch in tqdm(eval_dataloader, desc="Evaluating"):
     batch = tuple(t.to(args.device) for t in batch)
 
