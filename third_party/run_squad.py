@@ -322,7 +322,7 @@ def train(args, train_dataset, model, tokenizer):
             output_predict_file = os.path.join(args.output_dir, 'eval_test_results')
             total_f1 = total_em = num = 0.0
             with open(output_predict_file, 'a') as writer:
-              writer.write('\n======= Predict using the model from checkpoint-{}:\n'.format(global_step))
+              writer.write('\n======= Predict task {} using the model from checkpoint-{}:\n'.format(args.target_task_name, global_step))
               for language in args.eval_langs.split(','):
                 result = evaluate(args, model, tokenizer, split='test', prefix="", language=language)
                 writer.write('{}: f1={}, em={}\n'.format(language, result['f1'], result['exact_match']))
@@ -1292,7 +1292,7 @@ def main():
     output_predict_file = os.path.join(args.output_dir, 'test_results.txt')
     total_f1 = total_em = num = 0.0
     with open(output_predict_file, 'a') as writer:
-      writer.write('======= Predict using the model from {} for test:\n'.format(best_checkpoint))
+      writer.write('======= Predict task {} using the model from {} for test:\n'.format(args.target_task_name, best_checkpoint))
       for language in args.eval_langs.split(','):
         result = evaluate(args, model, tokenizer, split='test', prefix="", language=language)
         writer.write('{}: f1={}, em={}\n'.format(language, result['f1'], result['exact_match']))
