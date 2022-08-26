@@ -33,7 +33,8 @@ import torch
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm, trange
-from evaluate_mlqa import evaluate as squad_eval_metric
+from evaluate_mlqa import evaluate as mlqa_eval_metric
+from evaluate_squad import evaluate as squad_eval_metric
 
 from transformers import (
   WEIGHTS_NAME,
@@ -675,19 +676,32 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
   # Compute the F1 and exact scores.
   #results = squad_evaluate(examples, predictions)
   dataset_file = args.valid_file if split=='dev' else args.predict_file.replace("<lc>", language)
-  results = eval_squad(dataset_file, predictions, language=language)
+  if args.target_task_name == "mlqa":
+    results = eval_mlqa(dataset_file, predictions, language=language)
+  elif args.target_task_name in ["xquad", "squad"]:
+    results = eval_squad(dataset_file, predictions)
+  else:
+    print ("target_task_name: {} not supported!".format(args.target_task_name))
   #results = eval_squad(dataset_file, output_prediction_file)
 
   return results
 
 
-def eval_squad(dataset_file, predictions, language):
+def eval_mlqa(dataset_file, predictions, language):
   with open(dataset_file) as dataset_file:
     dataset_json = json.load(dataset_file)
     dataset = dataset_json['data']
   #with open(prediction_file) as prediction_file:
   #  predictions = json.load(prediction_file)
-  return squad_eval_metric(dataset, predictions, language)
+  return mlqa_eval_metric(dataset, predictions, language)
+
+def eval_squad(dataset_file, predictions):
+  with open(dataset_file) as dataset_file:
+    dataset_json = json.load(dataset_file)
+    dataset = dataset_json['data']
+  #with open(prediction_file) as prediction_file:
+  #  predictions = json.load(prediction_file)
+  return squad_eval_metric(dataset, predictions)
 
 
 def write_entity_info(args, tokenizer, all_input_ids, mention_preds, lang, entity_positions, pred_dir,
