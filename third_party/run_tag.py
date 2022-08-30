@@ -403,6 +403,7 @@ def write_entity_info(args, tokenizer, all_input_ids, out_label_ids, label_map, 
   num_gold_ner = 0
   num_bio_corr = 0
   num_bio_pred = 0
+  num_mention_pred = 0
   assert len(out_label_ids) == len(mention_preds)
   #infile = os.path.join(args.data_dir, lang, "test.{}".format(list(filter(None, args.model_name_or_path.split("/"))).pop()))
   #idxfile = infile + '.idx'
@@ -419,6 +420,15 @@ def write_entity_info(args, tokenizer, all_input_ids, out_label_ids, label_map, 
       for ent_s, ent_e in ent_pos:
         ent = " ".join(input_toks[ent_s:ent_e+1])
         ent_info += "{}-{}:{} | ".format(ent_s,ent_e,ent)
+        num_mention_pred += 1
+        flag = False
+        if label_map[label_ids[ent_s]].startswith("B"):
+          flag = True
+          for k in range(ent_s+1, ent_e+1):
+            if not label_map[label_ids[ent_s]].startswith("I"):
+              flag = False
+        if flag:
+          num_bio_corr += 1
       f.write(ent_info+"\n")
       for j, tok in enumerate(input_toks):
         if tok == "<pad>": break
@@ -429,17 +439,24 @@ def write_entity_info(args, tokenizer, all_input_ids, out_label_ids, label_map, 
           gold_l = label_map[label_ids[j]]
           if gold_l.startswith("B"):
             num_gold_ner += 1
-            if mention_labels[j] == 1:
-              num_bio_corr += 1
+            #if mention_labels[j] == 1:
+              #num_bio_corr += 1
         f.write("\t".join(items)+"\n")
       f.write("\n")
   
-    print ("Gold NER: {}, Bio Total Pred: {}, Bio Pred Corr:{}".format(num_gold_ner, num_bio_pred, num_bio_corr))
-    p = float(num_bio_corr) / num_bio_pred
+    #print ("Gold NER: {}, Bio Total Pred: {}, Bio Pred Corr:{}".format(num_gold_ner, num_bio_pred, num_bio_corr))
+    print ("Gold NER: {}, Bio Total Pred: {}, Mention Pred: {}, Bio Pred Corr:{}".format(num_gold_ner, num_bio_pred, num_mention_pred, num_bio_corr))
+    p = float(num_bio_corr) / num_mention_pred
     r = float(num_bio_corr) / num_gold_ner
     print ("Precision: {}, Recall: {}".format(p, r))
-    f.write("\n########BIO Head Prediction########\nGold NER: {}, Bio Total Pred: {}, Bio Pred Corr:{}\n".format(num_gold_ner, num_bio_pred, num_bio_corr))
+    f.write("\n########BIO Head Prediction########\nGold NER: {}, Bio Total Pred: {}, Mention Pred: {}, Bio Pred Corr:{}\n".format(num_gold_ner, num_bio_pred, num_mention_pred, num_bio_corr))
     f.write("Precision: {}, Recall: {}".format(p, r))
+    
+    #p = float(num_bio_corr) / num_bio_pred
+    #r = float(num_bio_corr) / num_gold_ner
+    #print ("Precision: {}, Recall: {}".format(p, r))
+    #f.write("\n########BIO Head Prediction########\nGold NER: {}, Bio Total Pred: {}, Bio Pred Corr:{}\n".format(num_gold_ner, num_bio_pred, num_bio_corr))
+    #f.write("Precision: {}, Recall: {}".format(p, r))
 
 def load_and_cache_examples(args, tokenizer, labels, pad_token_label_id, mode, lang, lang2id=None, few_shot=-1):
   # Make sure only the first process in distributed training process
