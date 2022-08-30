@@ -35,6 +35,7 @@ from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm, trange
 from evaluate_mlqa import evaluate as mlqa_eval_metric
 from evaluate_squad import evaluate as squad_eval_metric
+from entity_vocab import EntityVocab
 
 from transformers import (
   WEIGHTS_NAME,
@@ -485,7 +486,7 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
   all_results = []
   start_time = timeit.default_timer()
   entity_positions = []
-  entity_indices = []
+  entity_topks = []
   mention_bounds = None
   all_input_ids = None
   
@@ -573,19 +574,19 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
         for i in range(bio_logits.size(0)):
           entity_positions.append([])
           if args.output_entity_topk > 0:
-            entity_indices.append([])
+            entity_topks.append([])
           while offset < positions.shape[1] and positions[0, offset] <= i:
             if positions[0, offset] == i:
               entity_positions[-1].append((positions[1,offset],positions[2,offset])) 
               if args.output_entity_topk > 0:
-                entity_indices.append([{id:score for id, score in zip(entity_idx[offset], entity_score[offset])}])
+                entity_topks.append([{id:score for id, score in zip(entity_idx[offset], entity_score[offset])}])
               offset += 1
-        #print ("entity_indices:\n", entity_indices)
+        #print ("entity_topks:\n", entity_topks)
       else:
         for i in range(bio_logits.size(0)):
           entity_positions.append([])
         if args.output_entity_topk > 0:
-          entity_indices.append([])
+          entity_topks.append([])
       
       if mention_bounds is None:
         mention_bounds = bio_logits.detach().cpu().numpy()
@@ -649,7 +650,7 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
 
   if args.output_entity_info:
     write_entity_info(args, tokenizer, all_input_ids, mention_preds, language, entity_positions, pred_dir,
-                      tagme_mbs=tagme_mbs, entity_indices=entity_indices)
+                      tagme_mbs=tagme_mbs, entity_topks=entity_topks)
 
 
   # XLNet and XLM use a more complex post-processing procedure
@@ -722,7 +723,10 @@ def eval_squad(dataset_file, predictions):
 
 
 def write_entity_info(args, tokenizer, all_input_ids, mention_preds, lang, entity_positions, pred_dir,
-                      tagme_mbs=None, entity_indices=None):
+                      tagme_mbs=None, entity_topks=None):
+  entity_vocab = None
+  if entity_topks is not None and os.path.exists(args.entity_vocab_file):
+    entity_vocab = EntityVocab(args.entity_vocab_file)
   if tagme_mbs is None:
     output_dir = os.path.join(pred_dir, "{}_entity_info.txt".format(lang))
     num_bio_pred = 0
@@ -733,10 +737,16 @@ def write_entity_info(args, tokenizer, all_input_ids, mention_preds, lang, entit
         mention_labels = mention_preds[i]
         input_toks = tokenizer.convert_ids_to_tokens(input_ids)
         ent_pos = entity_positions[i]
+        if entity_vocab is not None:
+          ent_topk = entity_topks[i]
         ent_info = "Entities: "
-        for ent_s, ent_e in ent_pos:
+        for offset, (ent_s, ent_e) in enumerate(ent_pos):
           ent = " ".join(input_toks[ent_s:ent_e+1])
-          ent_info += "{}-{}:{} | ".format(ent_s,ent_e,ent)
+          ent_info += "\n{}-{}:{} | ".format(ent_s,ent_e,ent)
+          if entity_vocab is not None:
+            topk = ent_topk[offset]
+            topk_preds = ", ".join([entity_vocab.get_title_by_id(id)+": "+str(score) for id, score in topk.items()])
+            ent_info += topk_preds
           num_mention_pred += 1
         f.write(ent_info+"\n")
         for j, tok in enumerate(input_toks):
@@ -1105,6 +1115,7 @@ def main():
   parser.add_argument("--use_external_mention_boundary", action="store_true",
             help="Use TAGME to predicted external mention boundary.")
   parser.add_argument("--tagme_threshold", default=0.2, type=float, help="Threshold for TAGME.")
+  parser.add_argument("--entity_vocab_file", type=str, default=None, help="entity vocab file")
 
             
   args = parser.parse_args()
