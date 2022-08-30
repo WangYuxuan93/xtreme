@@ -579,7 +579,7 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
             if positions[0, offset] == i:
               entity_positions[-1].append((positions[1,offset],positions[2,offset])) 
               if args.output_entity_topk > 0:
-                entity_topks.append([{id:score for id, score in zip(entity_idx[offset], entity_score[offset])}])
+                entity_topks[-1].append({id:score for id, score in zip(entity_idx[offset], entity_score[offset])})
               offset += 1
         #print ("entity_topks:\n", entity_topks)
       else:
@@ -745,7 +745,7 @@ def write_entity_info(args, tokenizer, all_input_ids, mention_preds, lang, entit
           ent_info += "\n{}-{}:{} | ".format(ent_s,ent_e,ent)
           if entity_vocab is not None:
             topk = ent_topk[offset]
-            topk_preds = ", ".join([entity_vocab.get_title_by_id(id)+": "+str(score) for id, score in topk.items()])
+            topk_preds = ", ".join(["{} : {}".format(entity_vocab.get_title_by_id(id, lang), score) for id, score in topk.items()])
             ent_info += topk_preds
           num_mention_pred += 1
         f.write(ent_info+"\n")
