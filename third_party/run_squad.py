@@ -485,6 +485,7 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
   all_results = []
   start_time = timeit.default_timer()
   entity_positions = []
+  entity_indices = []
   mention_bounds = None
   all_input_ids = None
   
@@ -559,17 +560,27 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
       bio_logits, score, positions = outputs[-3:]
 
       if positions is not None:
+        if args.output_entity_topk > 0:
+          entity_score, entity_idx = torch.topk(score, args.output_entity_topk, dim=1)
+          assert entity_idx.shape[0] == positions.shape[0]
+
         positions = positions.detach().cpu().numpy()
         offset = 0
         for i in range(bio_logits.size(0)):
           entity_positions.append([])
+          if args.output_entity_topk > 0:
+            entity_indices.append([])
           while offset < positions.shape[1] and positions[0, offset] <= i:
             if positions[0, offset] == i:
               entity_positions[-1].append((positions[1,offset],positions[2,offset]))
               offset += 1
+              if args.output_entity_topk > 0:
+                entity_indices.append([{id:score for id, score in zip(entity_idx[offset], entity_score[offset])}])
       else:
         for i in range(bio_logits.size(0)):
-            entity_positions.append([])
+          entity_positions.append([])
+        if args.output_entity_topk > 0:
+          entity_indices.append([])
       
       if mention_bounds is None:
         mention_bounds = bio_logits.detach().cpu().numpy()
@@ -633,7 +644,7 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
 
   if args.output_entity_info:
     write_entity_info(args, tokenizer, all_input_ids, mention_preds, language, entity_positions, pred_dir,
-                      tagme_mbs=tagme_mbs)
+                      tagme_mbs=tagme_mbs, entity_indices=entity_indices)
 
 
   # XLNet and XLM use a more complex post-processing procedure
@@ -706,7 +717,7 @@ def eval_squad(dataset_file, predictions):
 
 
 def write_entity_info(args, tokenizer, all_input_ids, mention_preds, lang, entity_positions, pred_dir,
-                      tagme_mbs=None):
+                      tagme_mbs=None, entity_indices=None):
   if tagme_mbs is None:
     output_dir = os.path.join(pred_dir, "{}_entity_info.txt".format(lang))
     num_bio_pred = 0
@@ -1082,6 +1093,8 @@ def main():
   parser.add_argument("--freeze_params", type=str, default="", help="prefix to be freezed, split by ',' (e.g. entity,bio).")
   parser.add_argument("--output_entity_info", action="store_true",
             help="Output entity info for debug.")
+  parser.add_argument("--output_entity_topk", type=int, default=0,
+            help="Output topk entity prediction for each detected mention.")
   parser.add_argument("--get_external_mention_boundary", action="store_true",
             help="Use TAGME to obtain external mention boundary.")
   parser.add_argument("--use_external_mention_boundary", action="store_true",
@@ -1093,6 +1106,9 @@ def main():
 
   if args.model_type != "meae":
     args.output_entity_info = False
+    args.output_entity_topk = 0
+  if not args.output_entity_info:
+    args.output_entity_topk = 0
 
   if (
     os.path.exists(args.output_dir)
