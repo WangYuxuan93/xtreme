@@ -561,8 +561,12 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
 
       if positions is not None:
         if args.output_entity_topk > 0:
-          entity_score, entity_idx = torch.topk(score, args.output_entity_topk, dim=1)
-          assert entity_idx.shape[0] == positions.shape[0]
+          probs = torch.nn.functional.softmax(score, dim=1)
+          entity_score, entity_idx = torch.topk(probs, args.output_entity_topk, dim=1)
+          assert entity_idx.shape[0] == positions.shape[1]
+          entity_score = entity_score.detach().cpu().numpy()
+          entity_idx = entity_idx.detach().cpu().numpy()
+          
 
         positions = positions.detach().cpu().numpy()
         offset = 0
@@ -572,10 +576,11 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
             entity_indices.append([])
           while offset < positions.shape[1] and positions[0, offset] <= i:
             if positions[0, offset] == i:
-              entity_positions[-1].append((positions[1,offset],positions[2,offset]))
-              offset += 1
+              entity_positions[-1].append((positions[1,offset],positions[2,offset])) 
               if args.output_entity_topk > 0:
                 entity_indices.append([{id:score for id, score in zip(entity_idx[offset], entity_score[offset])}])
+              offset += 1
+        #print ("entity_indices:\n", entity_indices)
       else:
         for i in range(bio_logits.size(0)):
           entity_positions.append([])
