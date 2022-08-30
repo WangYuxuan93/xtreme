@@ -771,10 +771,12 @@ def write_entity_info(args, tokenizer, all_input_ids, mention_preds, lang, entit
         mention_labels = mention_preds[i]
         input_toks = tokenizer.convert_ids_to_tokens(input_ids)
         ent_pos = entity_positions[i]
+        if entity_vocab is not None:
+          ent_topk = entity_topks[i]
         ent_info = "Entities: "
-        for ent_s, ent_e in ent_pos:
+        for offset, (ent_s, ent_e) in enumerate(ent_pos):
           ent = " ".join(input_toks[ent_s:ent_e+1])
-          ent_info += "{}-{}:{} | ".format(ent_s,ent_e,ent)
+          ent_info += "\n{}-{}:{} | ".format(ent_s,ent_e,ent)
           num_mention_pred += 1
           flag = False
           if tagme_labels[ent_s] == 1:
@@ -784,6 +786,10 @@ def write_entity_info(args, tokenizer, all_input_ids, mention_preds, lang, entit
                 flag = False
           if flag:
             num_bio_corr += 1
+          if entity_vocab is not None:
+            topk = ent_topk[offset]
+            topk_preds = ", ".join(["{} : {}".format(entity_vocab.get_title_by_id(id, lang), score) for id, score in topk.items()])
+            ent_info += topk_preds
         f.write(ent_info+"\n")
         for j, tok in enumerate(input_toks):
           if tok == "<pad>": break
