@@ -421,7 +421,7 @@ def BIO_to_BIO2(labels):
     if label.startswith('I'):
       if i == 0:
         new_label = 'B'+label[1:]
-      elif i == 1 and labels[0] == '<PAD':
+      elif i == 1 and labels[0] == '<PAD>':
         new_label = 'B'+label[1:]
       else:
         if prev_label is not None and prev_label == 'O':
