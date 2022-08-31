@@ -726,6 +726,8 @@ def detokenize(tokens):
   for token in tokens:
     if token.startswith("▁"):
       word.append(token[1:])
+    elif len(word) == 0:
+      word.append(token)
     else:
       word[-1] += token
   return " ".join(word)
@@ -852,13 +854,13 @@ def write_entity_info(args, tokenizer, all_input_ids, mention_preds, lang, entit
       avg_pred_levenshtein_ratio = sum_pred_levenshtein_ratio / float(num_mention_pred)
       em_ent_match_acc = num_em_ent_match / float(num_bio_corr)
       avg_em_levenshtein_ratio = sum_em_levenshtein_ratio / float(num_bio_corr)
-      print ("Entity Prediction Corr for all Pred Mention: {}, Entity Prediction Corr for Exact Match Mention: {}, BIO Pred Corr:{}, B Pred Corr:{}".format(
+      print ("Entity Prediction Corr for all Pred Mention: {}, Entity Prediction Corr for Exact Match Mention: {}".format(
               num_pred_ent_match, num_em_ent_match))
       print ("Entity Prediction Accuracy | For EM Mention: {}, For all Predicted Mention: {}".format(
               em_ent_match_acc, pred_ent_match_acc))
       print ("Average Levenshtein ratio | For EM Mention: {}, For all Predicted Mention: {}".format(
               avg_em_levenshtein_ratio, avg_pred_levenshtein_ratio))
-      f.write("Entity Prediction Corr for all Pred Mention: {}, Entity Prediction Corr for Exact Match Mention: {}, BIO Pred Corr:{}, B Pred Corr:{}".format(
+      f.write("Entity Prediction Corr for all Pred Mention: {}, Entity Prediction Corr for Exact Match Mention: {}".format(
               num_pred_ent_match, num_em_ent_match))
       f.write("Entity Prediction Accuracy | For EM Mention: {}, For all Predicted Mention: {}".format(
               em_ent_match_acc, pred_ent_match_acc))
