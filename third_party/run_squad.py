@@ -721,6 +721,14 @@ def eval_squad(dataset_file, predictions):
   #  predictions = json.load(prediction_file)
   return squad_eval_metric(dataset, predictions)
 
+def detokenize(tokens):
+  word = []
+  for token in tokens:
+    if token.startswith("▁"):
+      word.append(token[1:])
+    else:
+      word[-1] += token
+  return " ".join(word)
 
 def write_entity_info(args, tokenizer, all_input_ids, mention_preds, lang, entity_positions, pred_dir,
                       tagme_mbs=None, entity_topks=None):
@@ -741,7 +749,8 @@ def write_entity_info(args, tokenizer, all_input_ids, mention_preds, lang, entit
           ent_topk = entity_topks[i]
         ent_info = "Entities: "
         for offset, (ent_s, ent_e) in enumerate(ent_pos):
-          ent = " ".join(input_toks[ent_s:ent_e+1])
+          #ent = " ".join(input_toks[ent_s:ent_e+1])
+          ent = detokenize(input_toks[ent_s:ent_e+1])
           ent_info += "\n{}-{}:{} | ".format(ent_s,ent_e,ent)
           if entity_vocab is not None:
             topk = ent_topk[offset]
@@ -765,6 +774,15 @@ def write_entity_info(args, tokenizer, all_input_ids, mention_preds, lang, entit
     num_b_corr = 0
     num_bio_pred = 0
     num_mention_pred = 0
+    num_em_ent_match = 0
+    sum_em_levenshtein_ratio = 0
+    num_pred_ent_match = 0
+    sum_pred_levenshtein_ratio = 0
+    if entity_vocab is not None:
+      try:
+        import Levenshtein
+      except:
+        print ("Failed loading Levenshtein!")
     bound_map = {0: "O", 1: "B", 2: "I", -100: "<PAD>"}
     with open(output_dir, "w") as f:
       for i, input_ids in enumerate(all_input_ids):
@@ -776,7 +794,8 @@ def write_entity_info(args, tokenizer, all_input_ids, mention_preds, lang, entit
           ent_topk = entity_topks[i]
         ent_info = "Entities: "
         for offset, (ent_s, ent_e) in enumerate(ent_pos):
-          ent = " ".join(input_toks[ent_s:ent_e+1])
+          #ent = " ".join(input_toks[ent_s:ent_e+1])
+          ent = detokenize(input_toks[ent_s:ent_e+1])
           ent_info += "\n{}-{}:{} | ".format(ent_s,ent_e,ent)
           num_mention_pred += 1
           flag = False
@@ -791,6 +810,18 @@ def write_entity_info(args, tokenizer, all_input_ids, mention_preds, lang, entit
             topk = ent_topk[offset]
             topk_preds = ", ".join(["{} : {}".format(entity_vocab.get_title_by_id(id, lang), score) for id, score in topk.items()])
             ent_info += topk_preds
+            # compute Levenshtein ratio for top1 entity pred
+            best_id = sorted(topk.items(), key=lambda x:x[1], reverse=True)[0][0]
+            ent_pred = entity_vocab.get_title_by_id(best_id, lang)
+            ent_info += " @ Best Entity: {}".format(ent_pred)
+            lev_rat = Levenshtein.ratio(ent, ent_pred)
+            if lev_rat == 1:
+              num_pred_ent_match += 1
+            sum_pred_levenshtein_ratio += lev_rat
+            if flag:
+              if lev_rat == 1:
+                num_em_ent_match += 1
+              sum_em_levenshtein_ratio += lev_rat
         f.write(ent_info+"\n")
         for j, tok in enumerate(input_toks):
           if tok == "<pad>": break
@@ -817,6 +848,22 @@ def write_entity_info(args, tokenizer, all_input_ids, mention_preds, lang, entit
       f.write("Exact Match | Precision: {}, Recall: {}\n".format(p, r))
       f.write("B Match | Precision: {}, Recall: {}".format(b_p, b_r))
 
+      pred_ent_match_acc = num_pred_ent_match / float(num_mention_pred)
+      avg_pred_levenshtein_ratio = sum_pred_levenshtein_ratio / float(num_mention_pred)
+      em_ent_match_acc = num_em_ent_match / float(num_bio_corr)
+      avg_em_levenshtein_ratio = sum_em_levenshtein_ratio / float(num_bio_corr)
+      print ("Entity Prediction Corr for all Pred Mention: {}, Entity Prediction Corr for Exact Match Mention: {}, BIO Pred Corr:{}, B Pred Corr:{}".format(
+              num_pred_ent_match, num_em_ent_match))
+      print ("Entity Prediction Accuracy | For EM Mention: {}, For all Predicted Mention: {}".format(
+              em_ent_match_acc, pred_ent_match_acc))
+      print ("Average Levenshtein ratio | For EM Mention: {}, For all Predicted Mention: {}".format(
+              avg_em_levenshtein_ratio, avg_pred_levenshtein_ratio))
+      f.write("Entity Prediction Corr for all Pred Mention: {}, Entity Prediction Corr for Exact Match Mention: {}, BIO Pred Corr:{}, B Pred Corr:{}".format(
+              num_pred_ent_match, num_em_ent_match))
+      f.write("Entity Prediction Accuracy | For EM Mention: {}, For all Predicted Mention: {}".format(
+              em_ent_match_acc, pred_ent_match_acc))
+      f.write("Average Levenshtein ratio | For EM Mention: {}, For all Predicted Mention: {}".format(
+              avg_em_levenshtein_ratio, avg_pred_levenshtein_ratio))
 
 def load_and_cache_examples(args, tokenizer, split='train', output_examples=False,
               language='en', lang2id=None):
