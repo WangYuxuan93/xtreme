@@ -415,17 +415,22 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
 
 def BIO_to_BIO2(labels):
   bio2_labels = []
+  prev_label = None
   for i, label in enumerate(labels):
+    new_label = label
     if label.startswith('I'):
       if i == 0:
-        bio2_labels.append('B'+label[1:])
+        new_label = 'B'+label[1:]
+      elif i == 1 and labels[0] == '<PAD':
+        new_label = 'B'+label[1:]
       else:
-        if labels[i-1] == 'O':
-          bio2_labels.append('B'+label[1:])
-        elif labels[i-1].split('-')[1] != label.split('-')[1]:
-          bio2_labels.append('B'+label[1:])
-    else:
-      bio2_labels.append(label)
+        if prev_label is not None and prev_label == 'O':
+          new_label = 'B'+label[1:]
+        elif prev_label is not None and prev_label.split('-')[1] != label.split('-')[1]:
+          new_label = 'B'+label[1:]
+    if new_label != '<PAD>':
+      prev_label = new_label
+    bio2_labels.append(new_label)
   return bio2_labels
 
 def detokenize(tokens):
@@ -465,11 +470,13 @@ def write_entity_info(args, tokenizer, all_input_ids, out_label_ids, label_map, 
   label_map[-100] = "<PAD>"
   with open(output_dir, "w") as f:
     for i, label_ids in enumerate(out_label_ids):
-      pred_labels = preds[i]
+      #pred_labels = preds[i]
+      pred_labels = [label_map[id] for id in preds[i]]
       mention_labels = mention_preds[i]
       gold_labels = [label_map[id] for id in label_ids]
       if args.ner_label_type == "bio":
         gold_labels = BIO_to_BIO2(gold_labels)
+        pred_labels = BIO_to_BIO2(pred_labels)
       input_ids = all_input_ids[i]
       input_toks = tokenizer.convert_ids_to_tokens(input_ids)
       ent_pos = entity_positions[i]
@@ -480,6 +487,19 @@ def write_entity_info(args, tokenizer, all_input_ids, out_label_ids, label_map, 
         #ent = " ".join(input_toks[ent_s:ent_e+1])
         ent = detokenize(input_toks[ent_s:ent_e+1])
         ent_info += "{}-{}:{} | ".format(ent_s,ent_e,ent)
+        
+        num_mention_pred += 1
+        flag = False
+        #if label_map[label_ids[ent_s]].startswith("B"):
+        if gold_labels[ent_s].startswith("B"):
+          flag = True
+          for k in range(ent_s+1, ent_e+1):
+            #if not label_map[label_ids[ent_s]].startswith("I"):
+            if not (gold_labels[ent_s] == "<PAD>" or gold_labels[ent_s].startswith("I")):
+              flag = False
+        if flag:
+          num_bio_corr += 1
+
         if entity_vocab is not None:
           topk = ent_topk[offset]
           topk_preds = ", ".join(["{} : {}".format(entity_vocab.get_title_by_id(id, lang), score) for id, score in topk.items()])
@@ -496,22 +516,12 @@ def write_entity_info(args, tokenizer, all_input_ids, out_label_ids, label_map, 
             if lev_rat == 1:
               num_em_ent_match += 1
             sum_em_levenshtein_ratio += lev_rat
-        num_mention_pred += 1
-        flag = False
-        #if label_map[label_ids[ent_s]].startswith("B"):
-        if gold_labels[ent_s].startswith("B"):
-          flag = True
-          for k in range(ent_s+1, ent_e+1):
-            #if not label_map[label_ids[ent_s]].startswith("I"):
-            if not gold_labels[ent_s].startswith("I"):
-              flag = False
-        if flag:
-          num_bio_corr += 1
+  
       f.write(ent_info+"\n")
       for j, tok in enumerate(input_toks):
         if tok == "<pad>": break
         #items = [tok, label_map[label_ids[j]], label_map[pred_labels[j]], bound_map[mention_labels[j]]]
-        items = [tok, gold_labels[j], label_map[pred_labels[j]], bound_map[mention_labels[j]]]
+        items = [tok, gold_labels[j], pred_labels[j], bound_map[mention_labels[j]]]
         if label_ids[j] >= 0:
           if mention_labels[j] == 1:
             num_bio_pred += 1
