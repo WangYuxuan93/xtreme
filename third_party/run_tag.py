@@ -402,6 +402,7 @@ def write_entity_info(args, tokenizer, all_input_ids, out_label_ids, label_map, 
   print (len(mention_preds))
   num_gold_ner = 0
   num_bio_corr = 0
+  num_b_corr = 0
   num_bio_pred = 0
   num_mention_pred = 0
   assert len(out_label_ids) == len(mention_preds)
@@ -439,8 +440,8 @@ def write_entity_info(args, tokenizer, all_input_ids, out_label_ids, label_map, 
           gold_l = label_map[label_ids[j]]
           if gold_l.startswith("B"):
             num_gold_ner += 1
-            #if mention_labels[j] == 1:
-              #num_bio_corr += 1
+            if mention_labels[j] == 1:
+              num_b_corr += 1
         f.write("\t".join(items)+"\n")
       f.write("\n")
   
@@ -448,9 +449,13 @@ def write_entity_info(args, tokenizer, all_input_ids, out_label_ids, label_map, 
     print ("Gold NER: {}, Bio Total Pred: {}, Mention Pred: {}, Bio Pred Corr:{}".format(num_gold_ner, num_bio_pred, num_mention_pred, num_bio_corr))
     p = float(num_bio_corr) / num_mention_pred
     r = float(num_bio_corr) / num_gold_ner
-    print ("Precision: {}, Recall: {}".format(p, r))
-    f.write("\n########BIO Head Prediction########\nGold NER: {}, Bio Total Pred: {}, Mention Pred: {}, Bio Pred Corr:{}\n".format(num_gold_ner, num_bio_pred, num_mention_pred, num_bio_corr))
-    f.write("Precision: {}, Recall: {}".format(p, r))
+    b_p = float(num_b_corr) / num_mention_pred
+    b_r = float(num_b_corr) / num_gold_ner
+    print ("Exact Match | Precision: {}, Recall: {}".format(p, r))
+    print ("B Match | Precision: {}, Recall: {}".format(b_p, b_r))
+    f.write("\n########BIO Head Prediction########\nGold NER: {}, Bio Total Pred: {}, Mention Pred: {}, BIO Pred Corr:{}, B Pred Corr:{}\n".format(num_gold_ner, num_bio_pred, num_mention_pred, num_bio_corr, num_b_corr))
+    f.write("Exact Match | Precision: {}, Recall: {}\n".format(p, r))
+    f.write("B Match | Precision: {}, Recall: {}".format(b_p, b_r))
     
     #p = float(num_bio_corr) / num_bio_pred
     #r = float(num_bio_corr) / num_gold_ner
