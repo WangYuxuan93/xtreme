@@ -568,7 +568,6 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
           entity_score = entity_score.detach().cpu().numpy()
           entity_idx = entity_idx.detach().cpu().numpy()
           
-
         positions = positions.detach().cpu().numpy()
         offset = 0
         for i in range(bio_logits.size(0)):
@@ -585,8 +584,8 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
       else:
         for i in range(bio_logits.size(0)):
           entity_positions.append([])
-        if args.output_entity_topk > 0:
-          entity_topks.append([])
+          if args.output_entity_topk > 0:
+            entity_topks.append([])
       
       if mention_bounds is None:
         mention_bounds = bio_logits.detach().cpu().numpy()
@@ -846,25 +845,25 @@ def write_entity_info(args, tokenizer, all_input_ids, mention_preds, lang, entit
       b_r = float(num_b_corr) / num_gold_ner
       print ("Exact Match | Precision: {}, Recall: {}".format(p, r))
       print ("B Match | Precision: {}, Recall: {}".format(b_p, b_r))
-      f.write("\n########BIO Head Prediction########\nTAGME Mentions: {}, Bio Total Pred: {}, Mention Pred: {}, BIO Pred Corr:{}, B Pred Corr:{}\n".format(num_gold_ner, num_bio_pred, num_mention_pred, num_bio_corr, num_b_corr))
-      f.write("Exact Match | Precision: {}, Recall: {}\n".format(p, r))
-      f.write("B Match | Precision: {}, Recall: {}".format(b_p, b_r))
+      f.write("\n########BIO Head Prediction########\nTAGME Mentions: {}, Bio Total Pred: {}, Mention Pred: {}, BIO Pred Corr:{}, B Pred Corr:{}".format(num_gold_ner, num_bio_pred, num_mention_pred, num_bio_corr, num_b_corr))
+      f.write("\nExact Match | Precision: {}, Recall: {}".format(p, r))
+      f.write("\nB Match | Precision: {}, Recall: {}".format(b_p, b_r))
 
       pred_ent_match_acc = num_pred_ent_match / float(num_mention_pred)
       avg_pred_levenshtein_ratio = sum_pred_levenshtein_ratio / float(num_mention_pred)
       em_ent_match_acc = num_em_ent_match / float(num_bio_corr)
       avg_em_levenshtein_ratio = sum_em_levenshtein_ratio / float(num_bio_corr)
-      print ("Entity Prediction Corr for all Pred Mention: {}, Entity Prediction Corr for Exact Match Mention: {}".format(
+      print ("\nEntity Prediction Corr for all Pred Mention: {}, Entity Prediction Corr for Exact Match Mention: {}".format(
               num_pred_ent_match, num_em_ent_match))
-      print ("Entity Prediction Accuracy | For EM Mention: {}, For all Predicted Mention: {}".format(
+      print ("\nEntity Prediction Accuracy | For EM Mention: {}, For all Predicted Mention: {}".format(
               em_ent_match_acc, pred_ent_match_acc))
-      print ("Average Levenshtein ratio | For EM Mention: {}, For all Predicted Mention: {}".format(
+      print ("\nAverage Levenshtein ratio | For EM Mention: {}, For all Predicted Mention: {}".format(
               avg_em_levenshtein_ratio, avg_pred_levenshtein_ratio))
-      f.write("Entity Prediction Corr for all Pred Mention: {}, Entity Prediction Corr for Exact Match Mention: {}".format(
+      f.write("\nEntity Prediction Corr for all Pred Mention: {}, Entity Prediction Corr for Exact Match Mention: {}".format(
               num_pred_ent_match, num_em_ent_match))
-      f.write("Entity Prediction Accuracy | For EM Mention: {}, For all Predicted Mention: {}".format(
+      f.write("\nEntity Prediction Accuracy | For EM Mention: {}, For all Predicted Mention: {}".format(
               em_ent_match_acc, pred_ent_match_acc))
-      f.write("Average Levenshtein ratio | For EM Mention: {}, For all Predicted Mention: {}".format(
+      f.write("\nAverage Levenshtein ratio | For EM Mention: {}, For all Predicted Mention: {}".format(
               avg_em_levenshtein_ratio, avg_pred_levenshtein_ratio))
 
 def load_and_cache_examples(args, tokenizer, split='train', output_examples=False,

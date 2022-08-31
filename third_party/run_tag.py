@@ -38,6 +38,8 @@ from utils_tag import convert_examples_to_features
 from utils_tag import get_labels
 from utils_tag import read_examples_from_file
 
+from entity_vocab import EntityVocab
+
 from transformers import (
   AdamW,
   get_linear_schedule_with_warmup,
@@ -304,6 +306,7 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
   preds = None
   out_label_ids = None
   entity_positions = []
+  entity_topks = []
   mention_bounds = None
   all_input_ids = None
   model.eval()
@@ -341,17 +344,30 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
       bio_logits, score, positions = outputs[-3:]
 
       if positions is not None:
+        if args.output_entity_topk > 0:
+          probs = torch.nn.functional.softmax(score, dim=1)
+          entity_score, entity_idx = torch.topk(probs, args.output_entity_topk, dim=1)
+          assert entity_idx.shape[0] == positions.shape[1]
+          entity_score = entity_score.detach().cpu().numpy()
+          entity_idx = entity_idx.detach().cpu().numpy()
+
         positions = positions.detach().cpu().numpy()
         offset = 0
         for i in range(bio_logits.size(0)):
           entity_positions.append([])
+          if args.output_entity_topk > 0:
+            entity_topks.append([])
           while offset < positions.shape[1] and positions[0, offset] <= i:
             if positions[0, offset] == i:
               entity_positions[-1].append((positions[1,offset],positions[2,offset]))
+              if args.output_entity_topk > 0:
+                entity_topks[-1].append({id:score for id, score in zip(entity_idx[offset], entity_score[offset])})
               offset += 1
       else:
         for i in range(bio_logits.size(0)):
-            entity_positions.append([])
+          entity_positions.append([])
+          if args.output_entity_topk > 0:
+            entity_topks.append([])
       
       if mention_bounds is None:
         mention_bounds = bio_logits.detach().cpu().numpy()
@@ -387,7 +403,8 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
       "f1": f1_score(out_label_list, preds_list)
     }
   if args.output_entity_info:
-    write_entity_info(args, tokenizer, all_input_ids, out_label_ids, label_map, preds, mention_preds, lang, entity_positions)
+    write_entity_info(args, tokenizer, all_input_ids, out_label_ids, label_map, preds, 
+                      mention_preds, lang, entity_positions, entity_topks=entity_topks)
   if print_result:
     logger.info("***** Evaluation result %s in %s *****" % (prefix, lang))
     for key in sorted(results.keys()):
@@ -396,15 +413,51 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
   return results, preds_list
 
 
-def write_entity_info(args, tokenizer, all_input_ids, out_label_ids, label_map, preds, mention_preds, lang, entity_positions):
+def BIO_to_BIO2(labels):
+  bio2_labels = []
+  for i, label in enumerate(labels):
+    if label.startswith('I'):
+      if i == 0:
+        bio2_labels.append('B'+label[1:])
+      else:
+        if labels[i-1] == 'O':
+          bio2_labels.append('B'+label[1:])
+        elif labels[i-1].split('-')[1] != label.split('-')[1]:
+          bio2_labels.append('B'+label[1:])
+    else:
+      bio2_labels.append(label)
+  return bio2_labels
+
+def detokenize(tokens):
+  word = []
+  for token in tokens:
+    if token.startswith("▁"):
+      word.append(token[1:])
+    elif len(word) == 0:
+      word.append(token)
+    else:
+      word[-1] += token
+  return " ".join(word)
+
+def write_entity_info(args, tokenizer, all_input_ids, out_label_ids, label_map, preds, mention_preds, 
+                      lang, entity_positions, entity_topks=None):
   output_dir = os.path.join(args.output_dir, "{}_entity_info.txt".format(lang))
-  print (len(out_label_ids))
-  print (len(mention_preds))
+  entity_vocab = None
+  if entity_topks is not None and os.path.exists(args.entity_vocab_file):
+    entity_vocab = EntityVocab(args.entity_vocab_file)
+    try:
+      import Levenshtein
+    except:
+      print ("Failed loading Levenshtein!")
   num_gold_ner = 0
   num_bio_corr = 0
   num_b_corr = 0
   num_bio_pred = 0
   num_mention_pred = 0
+  num_em_ent_match = 0
+  sum_em_levenshtein_ratio = 0
+  num_pred_ent_match = 0
+  sum_pred_levenshtein_ratio = 0
   assert len(out_label_ids) == len(mention_preds)
   #infile = os.path.join(args.data_dir, lang, "test.{}".format(list(filter(None, args.model_name_or_path.split("/"))).pop()))
   #idxfile = infile + '.idx'
@@ -414,30 +467,56 @@ def write_entity_info(args, tokenizer, all_input_ids, out_label_ids, label_map, 
     for i, label_ids in enumerate(out_label_ids):
       pred_labels = preds[i]
       mention_labels = mention_preds[i]
+      gold_labels = [label_map[id] for id in label_ids]
+      if args.ner_label_type == "bio":
+        gold_labels = BIO_to_BIO2(gold_labels)
       input_ids = all_input_ids[i]
       input_toks = tokenizer.convert_ids_to_tokens(input_ids)
       ent_pos = entity_positions[i]
+      if entity_vocab is not None:
+        ent_topk = entity_topks[i]
       ent_info = "Entities: "
-      for ent_s, ent_e in ent_pos:
-        ent = " ".join(input_toks[ent_s:ent_e+1])
+      for offset, (ent_s, ent_e) in enumerate(ent_pos):
+        #ent = " ".join(input_toks[ent_s:ent_e+1])
+        ent = detokenize(input_toks[ent_s:ent_e+1])
         ent_info += "{}-{}:{} | ".format(ent_s,ent_e,ent)
+        if entity_vocab is not None:
+          topk = ent_topk[offset]
+          topk_preds = ", ".join(["{} : {}".format(entity_vocab.get_title_by_id(id, lang), score) for id, score in topk.items()])
+          ent_info += topk_preds
+          # compute Levenshtein ratio for top1 entity pred
+          best_id = sorted(topk.items(), key=lambda x:x[1], reverse=True)[0][0]
+          ent_pred = entity_vocab.get_title_by_id(best_id, lang)
+          ent_info += " @ Best Entity: {}".format(ent_pred)
+          lev_rat = Levenshtein.ratio(ent, ent_pred)
+          if lev_rat == 1:
+            num_pred_ent_match += 1
+          sum_pred_levenshtein_ratio += lev_rat
+          if flag:
+            if lev_rat == 1:
+              num_em_ent_match += 1
+            sum_em_levenshtein_ratio += lev_rat
         num_mention_pred += 1
         flag = False
-        if label_map[label_ids[ent_s]].startswith("B"):
+        #if label_map[label_ids[ent_s]].startswith("B"):
+        if gold_labels[ent_s].startswith("B"):
           flag = True
           for k in range(ent_s+1, ent_e+1):
-            if not label_map[label_ids[ent_s]].startswith("I"):
+            #if not label_map[label_ids[ent_s]].startswith("I"):
+            if not gold_labels[ent_s].startswith("I"):
               flag = False
         if flag:
           num_bio_corr += 1
       f.write(ent_info+"\n")
       for j, tok in enumerate(input_toks):
         if tok == "<pad>": break
-        items = [tok, label_map[label_ids[j]], label_map[pred_labels[j]], bound_map[mention_labels[j]]]
+        #items = [tok, label_map[label_ids[j]], label_map[pred_labels[j]], bound_map[mention_labels[j]]]
+        items = [tok, gold_labels[j], label_map[pred_labels[j]], bound_map[mention_labels[j]]]
         if label_ids[j] >= 0:
           if mention_labels[j] == 1:
             num_bio_pred += 1
-          gold_l = label_map[label_ids[j]]
+          #gold_l = label_map[label_ids[j]]
+          gold_l = gold_labels[j]
           if gold_l.startswith("B"):
             num_gold_ner += 1
             if mention_labels[j] == 1:
@@ -453,15 +532,26 @@ def write_entity_info(args, tokenizer, all_input_ids, out_label_ids, label_map, 
     b_r = float(num_b_corr) / num_gold_ner
     print ("Exact Match | Precision: {}, Recall: {}".format(p, r))
     print ("B Match | Precision: {}, Recall: {}".format(b_p, b_r))
-    f.write("\n########BIO Head Prediction########\nGold NER: {}, Bio Total Pred: {}, Mention Pred: {}, BIO Pred Corr:{}, B Pred Corr:{}\n".format(num_gold_ner, num_bio_pred, num_mention_pred, num_bio_corr, num_b_corr))
-    f.write("Exact Match | Precision: {}, Recall: {}\n".format(p, r))
-    f.write("B Match | Precision: {}, Recall: {}".format(b_p, b_r))
+    f.write("\n########BIO Head Prediction########\nGold NER: {}, Bio Total Pred: {}, Mention Pred: {}, BIO Pred Corr:{}, B Pred Corr:{}".format(num_gold_ner, num_bio_pred, num_mention_pred, num_bio_corr, num_b_corr))
+    f.write("\nExact Match | Precision: {}, Recall: {}\n".format(p, r))
+    f.write("\nB Match | Precision: {}, Recall: {}".format(b_p, b_r))
     
-    #p = float(num_bio_corr) / num_bio_pred
-    #r = float(num_bio_corr) / num_gold_ner
-    #print ("Precision: {}, Recall: {}".format(p, r))
-    #f.write("\n########BIO Head Prediction########\nGold NER: {}, Bio Total Pred: {}, Bio Pred Corr:{}\n".format(num_gold_ner, num_bio_pred, num_bio_corr))
-    #f.write("Precision: {}, Recall: {}".format(p, r))
+    pred_ent_match_acc = num_pred_ent_match / float(num_mention_pred)
+    avg_pred_levenshtein_ratio = sum_pred_levenshtein_ratio / float(num_mention_pred)
+    em_ent_match_acc = num_em_ent_match / float(num_bio_corr)
+    avg_em_levenshtein_ratio = sum_em_levenshtein_ratio / float(num_bio_corr)
+    print ("\nEntity Prediction Corr for all Pred Mention: {}, Entity Prediction Corr for Exact Match Mention: {}".format(
+            num_pred_ent_match, num_em_ent_match))
+    print ("\nEntity Prediction Accuracy | For EM Mention: {}, For all Predicted Mention: {}".format(
+            em_ent_match_acc, pred_ent_match_acc))
+    print ("\nAverage Levenshtein ratio | For EM Mention: {}, For all Predicted Mention: {}".format(
+            avg_em_levenshtein_ratio, avg_pred_levenshtein_ratio))
+    f.write("\nEntity Prediction Corr for all Pred Mention: {}, Entity Prediction Corr for Exact Match Mention: {}".format(
+            num_pred_ent_match, num_em_ent_match))
+    f.write("\nEntity Prediction Accuracy | For EM Mention: {}, For all Predicted Mention: {}".format(
+            em_ent_match_acc, pred_ent_match_acc))
+    f.write("\nAverage Levenshtein ratio | For EM Mention: {}, For all Predicted Mention: {}".format(
+            avg_em_levenshtein_ratio, avg_pred_levenshtein_ratio))
 
 def load_and_cache_examples(args, tokenizer, labels, pad_token_label_id, mode, lang, lang2id=None, few_shot=-1):
   # Make sure only the first process in distributed training process
@@ -629,10 +719,17 @@ def main():
     action="store_true",
     help="Whether to evaluate test set durinng training",
   )
+  parser.add_argument("--output_entity_topk", type=int, default=0,
+            help="Output topk entity prediction for each detected mention.")
+  parser.add_argument("--entity_vocab_file", type=str, default=None, help="entity vocab file")
+  parser.add_argument("--ner_label_type", type=str, default="bio2", choices=["bio","bio2"], help="log file")
   args = parser.parse_args()
 
   if args.model_type != "meae":
     args.output_entity_info = False
+    args.output_entity_topk = 0
+  if not args.output_entity_info:
+    args.output_entity_topk = 0
 
   if os.path.exists(args.output_dir) and os.listdir(
       args.output_dir) and args.do_train and not args.overwrite_output_dir:
