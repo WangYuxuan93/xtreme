@@ -219,7 +219,7 @@ def train(args, train_dataset, model, tokenizer):
   if args.get_external_mention_boundary or args.use_external_mention_boundary: 
     tagme_mbs = []
     dataset_file = args.train_file
-    tagme_file = dataset_file + ".tagme_prediction.maxseq_{}.jsonl".format(args.max_seq_length)
+    tagme_file = dataset_file + ".tagme_prediction{}.maxseq_{}.jsonl".format(args.tagme_threshold, args.max_seq_length)
     tagme_data = None
     if os.path.exists(tagme_file):
       tagme_data = {}
@@ -494,7 +494,7 @@ def evaluate(args, model, tokenizer, split='dev', prefix="", language='en', lang
   if (args.get_external_mention_boundary or args.use_external_mention_boundary) and language in ["en", "de", "it"]: 
     tagme_mbs = []
     dataset_file = args.valid_file if split=='dev' else args.predict_file.replace("<lc>", language)
-    tagme_file = dataset_file + ".tagme_prediction.maxseq_{}.jsonl".format(args.max_seq_length)
+    tagme_file = dataset_file + ".tagme_prediction{}.maxseq_{}.jsonl".format(args.tagme_threshold, args.max_seq_length)
     tagme_data = None
     if os.path.exists(tagme_file):
       tagme_data = {}
@@ -762,6 +762,7 @@ def write_entity_info(args, tokenizer, all_input_ids, mention_preds, lang, entit
     output_dir = os.path.join(pred_dir, "{}_entity_info.txt".format(lang))
     num_gold_ner = 0
     num_bio_corr = 0
+    num_b_corr = 0
     num_bio_pred = 0
     num_mention_pred = 0
     bound_map = {0: "O", 1: "B", 2: "I", -100: "<PAD>"}
@@ -798,17 +799,23 @@ def write_entity_info(args, tokenizer, all_input_ids, mention_preds, lang, entit
             num_bio_pred += 1
           if tagme_labels[j] == 1:
             num_gold_ner += 1
+            if mention_labels[j] == 1:
+              num_b_corr += 1
           f.write("\t".join(items)+"\n")
         f.write("\n")
 
       #print ("B Total Pred: {}, Mention Total Pred:{}".format(num_bio_pred, num_mention_pred))
       #f.write("\n########BIO Head Prediction########\nB Total Pred: {}, Mention Total Pred:{}\n".format(num_bio_pred, num_mention_pred))
-      print ("TAGME Mentions: {}, Bio Total Pred: {}, Mention Pred: {}, Bio Pred Corr:{}".format(num_gold_ner, num_bio_pred, num_mention_pred, num_bio_corr))
+      print ("TAGME Mentions: {}, Bio Total Pred: {}, Mention Pred: {}, BIO Pred Corr:{}, B Pred Corr:{}".format(num_gold_ner, num_bio_pred, num_mention_pred, num_bio_corr, num_b_corr))
       p = float(num_bio_corr) / num_mention_pred
       r = float(num_bio_corr) / num_gold_ner
-      print ("Precision: {}, Recall: {}".format(p, r))
-      f.write("\n########BIO Head Prediction########\nTAGME Mentions: {}, Bio Total Pred: {}, Mention Pred: {}, Bio Pred Corr:{}\n".format(num_gold_ner, num_bio_pred, num_mention_pred, num_bio_corr))
-      f.write("Precision: {}, Recall: {}".format(p, r))
+      b_p = float(num_b_corr) / num_mention_pred
+      b_r = float(num_b_corr) / num_gold_ner
+      print ("Exact Match | Precision: {}, Recall: {}".format(p, r))
+      print ("B Match | Precision: {}, Recall: {}".format(b_p, b_r))
+      f.write("\n########BIO Head Prediction########\nTAGME Mentions: {}, Bio Total Pred: {}, Mention Pred: {}, BIO Pred Corr:{}, B Pred Corr:{}\n".format(num_gold_ner, num_bio_pred, num_mention_pred, num_bio_corr, num_b_corr))
+      f.write("Exact Match | Precision: {}, Recall: {}\n".format(p, r))
+      f.write("B Match | Precision: {}, Recall: {}".format(b_p, b_r))
 
 
 def load_and_cache_examples(args, tokenizer, split='train', output_examples=False,
