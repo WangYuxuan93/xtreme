@@ -548,8 +548,8 @@ def write_entity_info(args, tokenizer, all_input_ids, out_label_ids, label_map, 
     
     pred_ent_match_acc = num_pred_ent_match / float(num_mention_pred)
     avg_pred_levenshtein_ratio = sum_pred_levenshtein_ratio / float(num_mention_pred)
-    em_ent_match_acc = num_em_ent_match / float(num_bio_corr)
-    avg_em_levenshtein_ratio = sum_em_levenshtein_ratio / float(num_bio_corr)
+    em_ent_match_acc = num_em_ent_match / float(num_bio_corr+1e-8)
+    avg_em_levenshtein_ratio = sum_em_levenshtein_ratio / float(num_bio_corr+1e-8)
     print ("\nEntity Prediction Corr for all Pred Mention: {}, Entity Prediction Corr for Exact Match Mention: {}".format(
             num_pred_ent_match, num_em_ent_match))
     print ("\nEntity Prediction Accuracy | For EM Mention: {}, For all Predicted Mention: {}".format(
